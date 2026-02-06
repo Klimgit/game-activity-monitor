@@ -20,6 +20,11 @@ import (
 func main() {
 	cfg := config.Load()
 
+	if cfg.Auth.JWTSecret == "change-me-in-production" {
+		log.Println("WARNING: JWT_SECRET is set to the insecure default value. " +
+			"Set the JWT_SECRET environment variable before deploying to production.")
+	}
+
 	// ── Database ─────────────────────────────────────────────────────────────
 	db, err := sql.Open("postgres", cfg.Database.URL)
 	if err != nil {
