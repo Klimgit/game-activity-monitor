@@ -42,20 +42,6 @@ export default function Export() {
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-white">Export Data</h1>
 
-      {/* Notice */}
-      <div className="card border-yellow-500/30 bg-yellow-500/5">
-        <div className="flex gap-3">
-          <span className="text-yellow-400 text-lg">⚠️</span>
-          <div>
-            <p className="text-sm font-medium text-yellow-400">Export endpoints not yet implemented</p>
-            <p className="text-sm text-slate-400 mt-1">
-              The server currently returns 501. The UI is ready — add the CSV/JSON generation
-              logic to <code className="text-slate-300">server/internal/api/handlers/export.go</code>.
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* Filters */}
       <div className="card">
         <h2 className="text-sm font-medium text-slate-300 mb-4">Filter</h2>

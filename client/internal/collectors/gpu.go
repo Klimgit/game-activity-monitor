@@ -1,11 +1,13 @@
 package collectors
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // collectGPUMetrics probes the host for GPU utilization, temperature and
@@ -33,11 +35,18 @@ func collectGPUMetrics() (utilPct float64, tempC float64, memUsedMB int64) {
 	return 0, 0, 0
 }
 
+// nvidiaSMITimeout is the maximum time we wait for the nvidia-smi subprocess.
+// A stuck or very slow driver probe must not block the system collector goroutine.
+const nvidiaSMITimeout = 3 * time.Second
+
 // probeNvidiaSMI calls nvidia-smi with CSV output and parses the first GPU's
 // utilization, temperature and used memory.  Returns ok=false if the binary
-// is not found or returns a non-zero exit code (e.g. no NVIDIA GPU present).
+// is not found, times out, or returns a non-zero exit code (no NVIDIA GPU).
 func probeNvidiaSMI() (utilPct float64, tempC float64, memUsedMB int64, ok bool) {
-	out, err := exec.Command(
+	ctx, cancel := context.WithTimeout(context.Background(), nvidiaSMITimeout)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx,
 		"nvidia-smi",
 		"--query-gpu=utilization.gpu,temperature.gpu,memory.used",
 		"--format=csv,noheader,nounits",

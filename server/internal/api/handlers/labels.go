@@ -30,6 +30,19 @@ func CreateLabel(deps *Dependencies) gin.HandlerFunc {
 			return
 		}
 
+		// Verify the session belongs to the authenticated user before attaching.
+		if req.SessionID != nil {
+			s, err := deps.Storage.GetSessionByID(c.Request.Context(), *req.SessionID, uid)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+				return
+			}
+			if s == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+				return
+			}
+		}
+
 		ts := req.Timestamp
 		if ts.IsZero() {
 			ts = time.Now().UTC()

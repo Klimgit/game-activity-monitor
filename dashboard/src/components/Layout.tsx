@@ -5,6 +5,7 @@ const navItems = [
   { to: '/realtime',  label: 'Realtime',  icon: '📊' },
   { to: '/sessions',  label: 'Sessions',  icon: '🎮' },
   { to: '/heatmap',   label: 'Heatmap',   icon: '🖱️' },
+  { to: '/labels',    label: 'Labels',    icon: '🏷️' },
   { to: '/export',    label: 'Export',    icon: '📥' },
 ]
 
