@@ -1,0 +1,41 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+client/build/
+server/bin/
+
+# Go
+*.test
+*.out
+/vendor/
+go.sum
+
+# Env / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node / dashboard
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.env.local
+
+# DB
+*.db
+*.sqlite
+
+# Logs
+*.log
