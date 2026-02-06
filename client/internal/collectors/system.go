@@ -13,16 +13,21 @@ import (
 	"game-activity-monitor/client/internal/models"
 )
 
-// systemCollector combines CPU, RAM, and active process into a single
-// system_metrics event per tick. This replaces the three separate collectors
-// (cpu, memory, process) that each emitted partial events, requiring awkward
-// server-side merging by time window.
+// systemCollector combines CPU, RAM, active process, and optionally GPU into a
+// single system_metrics event per tick. This replaces the three separate
+// collectors (cpu, memory, process) that each emitted partial events, requiring
+// awkward server-side merging by time window.
+//
+// GPU collection is opt-in (collectGPU=true) because it spawns a short-lived
+// nvidia-smi subprocess on every tick; users without a dedicated GPU or
+// NVIDIA drivers can leave it disabled.
 type systemCollector struct {
-	interval time.Duration
+	interval   time.Duration
+	collectGPU bool
 }
 
-func newSystemCollector(interval time.Duration) *systemCollector {
-	return &systemCollector{interval: interval}
+func newSystemCollector(interval time.Duration, collectGPU bool) *systemCollector {
+	return &systemCollector{interval: interval, collectGPU: collectGPU}
 }
 
 func (s *systemCollector) Name() string { return "system" }
@@ -34,7 +39,7 @@ func (s *systemCollector) Start(ctx context.Context, out chan<- *models.RawEvent
 	for {
 		select {
 		case <-ticker.C:
-			data, err := collectSystemMetrics(ctx)
+			data, err := s.collectMetrics(ctx)
 			if err != nil {
 				log.Printf("system collector: %v", err)
 				continue
@@ -50,7 +55,7 @@ func (s *systemCollector) Start(ctx context.Context, out chan<- *models.RawEvent
 	}
 }
 
-func collectSystemMetrics(ctx context.Context) (models.SystemMetricsData, error) {
+func (s *systemCollector) collectMetrics(ctx context.Context) (models.SystemMetricsData, error) {
 	var data models.SystemMetricsData
 
 	if percents, err := cpu.PercentWithContext(ctx, 0, false); err == nil && len(percents) > 0 {
@@ -63,6 +68,10 @@ func collectSystemMetrics(ctx context.Context) (models.SystemMetricsData, error)
 
 	if name, err := topCPUProcess(ctx); err == nil {
 		data.ActiveProcess = name
+	}
+
+	if s.collectGPU {
+		data.GPUPercent, data.GPUTempC, data.GPUMemUsedMB = collectGPUMetrics()
 	}
 
 	return data, nil

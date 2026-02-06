@@ -14,6 +14,11 @@ const (
 	EventKeyPress      EventType = "key_press"
 	EventKeyRelease    EventType = "key_release"
 	EventSystemMetrics EventType = "system_metrics"
+	// EventWindowMetrics is emitted by the client aggregator once per
+	// aggregation window (default 30 s).  It contains pre-computed features
+	// for mouse and keyboard activity and is stored server-side in the
+	// session_windows hypertable for long-term ML training data.
+	EventWindowMetrics EventType = "window_metrics"
 )
 
 // RawEvent is a single timestamped event ready to be sent to the server.
@@ -52,6 +57,24 @@ type SystemMetricsData struct {
 	GPUMemUsedMB  int64   `json:"gpu_mem_used_mb,omitempty"`
 	ActiveProcess string  `json:"active_process,omitempty"`
 	WindowTitle   string  `json:"window_title,omitempty"`
+}
+
+// WindowMetricsData is the payload for EventWindowMetrics.
+// It summarises mouse and keyboard activity over one aggregation window so
+// the server stores one compact row per window instead of hundreds of raw
+// events.  system_metrics events are still forwarded individually for the
+// real-time dashboard.
+type WindowMetricsData struct {
+	WindowStart   time.Time `json:"window_start"`
+	WindowEnd     time.Time `json:"window_end"`
+	DurationS     float64   `json:"duration_s"`
+	MouseMoves    int       `json:"mouse_moves"`
+	MouseClicks   int       `json:"mouse_clicks"`
+	SpeedAvg      float64   `json:"speed_avg"`
+	SpeedMax      float64   `json:"speed_max"`
+	Keystrokes    int       `json:"keystrokes"`
+	KeyHoldAvgMs  float64   `json:"key_hold_avg_ms"`
+	ActiveProcess string    `json:"active_process,omitempty"`
 }
 
 // ActivityLabel carries a manual hotkey annotation to the server.

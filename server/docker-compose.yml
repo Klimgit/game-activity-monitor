@@ -1,6 +1,19 @@
 version: "3.8"
 
+# ---------------------------------------------------------------------------
+# Logging driver applied to every service: all container stdout/stderr goes
+# to Loki via the loki-logger driver so Grafana can query them in real time.
+# ---------------------------------------------------------------------------
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+    tag: "{{.Name}}"
+
 services:
+
+  # ── Database ───────────────────────────────────────────────────────────────
   timescaledb:
     image: timescale/timescaledb:latest-pg15
     container_name: game-monitor-db
@@ -10,15 +23,19 @@ services:
       POSTGRES_DB: game_metrics
     volumes:
       - db_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # Port is NOT exposed to the host — only reachable inside the Docker network.
+    # Use an SSH tunnel or pgAdmin container if you need direct DB access.
+    expose:
+      - "5432"
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # ── Go API server ──────────────────────────────────────────────────────────
   server:
     build: .
     container_name: game-monitor-server
@@ -27,11 +44,66 @@ services:
       DATABASE_URL: postgres://postgres:${DB_PASSWORD}@timescaledb:5432/game_metrics?sslmode=disable
       JWT_SECRET: ${JWT_SECRET}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"   # bind to loopback — Nginx proxies from outside
     depends_on:
       timescaledb:
         condition: service_healthy
     restart: unless-stopped
+    logging: *default-logging
+
+  # ── Loki — log storage ─────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: game-monitor-loki
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - ./loki-config.yml:/etc/loki/config.yml:ro
+      - loki_data:/loki
+    expose:
+      - "3100"
+    restart: unless-stopped
+    logging: *default-logging
+
+  # ── Promtail — log collector ───────────────────────────────────────────────
+  # Reads container logs from /var/lib/docker/containers and pushes them to Loki.
+  promtail:
+    image: grafana/promtail:2.9.4
+    container_name: game-monitor-promtail
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - promtail_positions:/tmp/promtail
+    depends_on:
+      - loki
+    restart: unless-stopped
+    logging: *default-logging
+
+  # ── Grafana — dashboards & log viewer ─────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: game-monitor-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost/grafana}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      # Pre-provision datasources automatically on first start
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "127.0.0.1:3000:3000"   # bind to loopback — Nginx proxies from outside
+    depends_on:
+      - loki
+    restart: unless-stopped
+    logging: *default-logging
 
 volumes:
   db_data:
+  loki_data:
+  grafana_data:
+  promtail_positions:

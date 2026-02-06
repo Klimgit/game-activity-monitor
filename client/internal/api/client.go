@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -244,26 +245,93 @@ func (c *Client) SendLabel(ctx context.Context, state string) error {
 
 const syncBatchSize = 1000
 
+// offlineBackoff tracks consecutive flush failures and computes exponential
+// back-off delays so the sync worker does not hammer an unreachable server.
+//
+// Back-off sequence with base=5s: 10s → 20s → 40s → 80s → 160s → 300s (cap).
+// The state is local to StartSyncWorker and therefore needs no mutex.
+type offlineBackoff struct {
+	failures  int
+	nextRetry time.Time
+	offline   bool // true after the 3rd consecutive failure
+}
+
+const offlineThreshold = 3
+const maxBackoff = 5 * time.Minute
+
+// ready returns true when a flush attempt should proceed.
+func (b *offlineBackoff) ready() bool {
+	return b.nextRetry.IsZero() || time.Now().After(b.nextRetry)
+}
+
+// recordFailure increments the counter and schedules the next retry using
+// exponential back-off capped at maxBackoff.
+func (b *offlineBackoff) recordFailure(base time.Duration) {
+	b.failures++
+	shift := b.failures - 1
+	if shift > 6 {
+		shift = 6 // 2^6 = 64; base×64 ≥ maxBackoff for any reasonable base
+	}
+	delay := base * (1 << uint(shift))
+	if delay > maxBackoff {
+		delay = maxBackoff
+	}
+	b.nextRetry = time.Now().Add(delay)
+
+	if !b.offline && b.failures >= offlineThreshold {
+		b.offline = true
+		log.Printf("sync: server unreachable after %d attempts — entering offline mode (retry in %s)",
+			b.failures, delay.Round(time.Second))
+	}
+}
+
+// recordSuccess resets the back-off state and logs recovery when the client
+// had previously entered offline mode.
+func (b *offlineBackoff) recordSuccess() {
+	if b.offline {
+		log.Printf("sync: server reachable again — leaving offline mode")
+	}
+	b.failures = 0
+	b.offline = false
+	b.nextRetry = time.Time{}
+}
+
 // StartSyncWorker runs a loop that flushes pending SQLite events to the server.
 // It blocks until ctx is cancelled, then performs one final flush.
+//
+// When the server is unreachable the worker enters offline mode and applies
+// exponential back-off (up to 5 min) between retry attempts.  Events continue
+// to accumulate in SQLite during outages.
 func (c *Client) StartSyncWorker(ctx context.Context) {
 	ticker := time.NewTicker(c.flushInterval)
 	defer ticker.Stop()
 
+	var bo offlineBackoff
+
 	for {
 		select {
 		case <-ticker.C:
-			c.flush(context.Background())
+			if !bo.ready() {
+				continue
+			}
+			if c.flush(context.Background()) {
+				bo.recordSuccess()
+			} else {
+				bo.recordFailure(c.flushInterval)
+			}
+
 		case <-ctx.Done():
 			shutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			c.flush(shutCtx)
+			c.flush(shutCtx) //nolint:errcheck — best-effort on shutdown
 			cancel()
 			return
 		}
 	}
 }
 
-func (c *Client) flush(ctx context.Context) {
+// flush attempts one full drain of the SQLite queue.  Returns true when all
+// pending events were delivered, false on any network or auth error.
+func (c *Client) flush(ctx context.Context) bool {
 	c.mu.Lock()
 	tok := c.token
 	email := c.email
@@ -273,17 +341,17 @@ func (c *Client) flush(ctx context.Context) {
 	// Auto-reconnect: re-authenticate if token is missing.
 	if tok == "" {
 		if email == "" {
-			return // no credentials configured
+			return true // nothing to do — client not configured yet
 		}
 		if err := c.Login(ctx, email, password); err != nil {
-			return // server still unreachable; retry next tick
+			return false // server unreachable
 		}
 	}
 
 	for {
 		events, ids, err := c.store.FetchBatch(ctx, syncBatchSize)
 		if err != nil || len(events) == 0 {
-			return
+			return true // queue empty or unreadable; either way not a network failure
 		}
 
 		if err := c.sendBatch(ctx, events); err != nil {
@@ -291,15 +359,15 @@ func (c *Client) flush(ctx context.Context) {
 			c.mu.Lock()
 			c.token = ""
 			c.mu.Unlock()
-			return
+			return false
 		}
 
 		if err := c.store.DeleteByIDs(ctx, ids); err != nil {
-			return
+			return true // delivered but cleanup failed; non-fatal
 		}
 
 		if len(events) < syncBatchSize {
-			return
+			return true
 		}
 	}
 }

@@ -93,6 +93,18 @@ func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*model
 	}
 	defer clickStmt.Close()
 
+	// Prepared statement for aggregated window metrics used for ML training.
+	winStmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO session_windows
+		    (time, user_id, session_id, window_start, window_end, duration_s,
+		     mouse_moves, mouse_clicks, speed_avg, speed_max,
+		     keystrokes, key_hold_avg_ms, active_process)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`)
+	if err != nil {
+		return fmt.Errorf("storage.SaveEventsBatch prepare window: %w", err)
+	}
+	defer winStmt.Close()
+
 	for _, e := range events {
 		dataJSON, err := json.Marshal(e.Data)
 		if err != nil {
@@ -115,6 +127,21 @@ func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*model
 					click.X, click.Y, click.Button,
 				); err != nil {
 					return fmt.Errorf("storage.SaveEventsBatch exec click: %w", err)
+				}
+			}
+		}
+
+		// Mirror window_metrics events into session_windows for ML training.
+		if e.EventType == models.EventWindowMetrics {
+			var w models.WindowMetricsData
+			if err := json.Unmarshal(e.Data, &w); err == nil {
+				if _, err := winStmt.ExecContext(ctx,
+					e.Timestamp, e.UserID, sessionID,
+					w.WindowStart, w.WindowEnd, w.DurationS,
+					w.MouseMoves, w.MouseClicks, w.SpeedAvg, w.SpeedMax,
+					w.Keystrokes, w.KeyHoldAvgMs, w.ActiveProcess,
+				); err != nil {
+					return fmt.Errorf("storage.SaveEventsBatch exec window: %w", err)
 				}
 			}
 		}
