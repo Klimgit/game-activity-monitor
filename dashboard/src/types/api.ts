@@ -79,6 +79,11 @@ export interface WindowMetricsData {
   keystrokes: number
   key_hold_avg_ms: number
   active_process?: string
+  cpu_avg: number
+  cpu_max: number
+  mem_avg: number
+  gpu_util_avg: number
+  gpu_temp_avg: number
 }
 
 export interface ActivityLabel {

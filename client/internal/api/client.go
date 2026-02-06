@@ -20,7 +20,7 @@ import (
 // flushes them on a regular interval.
 //
 // Thread-safety: all exported methods are safe for concurrent use. The fields
-// token, userID, and sessionID are guarded by mu; lastProcess by procMu.
+// token, userID, and sessionID are guarded by mu.
 type Client struct {
 	baseURL       string
 	httpClient    *http.Client
@@ -40,10 +40,6 @@ type Client struct {
 
 	// Session duration tracking.
 	tracker *session.Tracker
-
-	// procMu guards lastProcess updated by system_metrics events.
-	procMu      sync.Mutex
-	lastProcess string
 }
 
 // NewClient constructs a Client. store must be non-nil.
@@ -69,14 +65,6 @@ func (c *Client) CurrentSessionID() *int64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.sessionID
-}
-
-// LastKnownProcess returns the most recently detected active process name.
-// Updated automatically by Enqueue() from system_metrics events.
-func (c *Client) LastKnownProcess() string {
-	c.procMu.Lock()
-	defer c.procMu.Unlock()
-	return c.lastProcess
 }
 
 // ─── Authentication ───────────────────────────────────────────────────────────
@@ -118,23 +106,13 @@ func (c *Client) Login(ctx context.Context, email, password string) error {
 
 // ─── Event buffering ──────────────────────────────────────────────────────────
 
-// Enqueue stamps the event with the current user/session IDs, updates process
-// tracking and session activity state, and persists to the local SQLite buffer.
+// Enqueue stamps the event with the current user/session IDs, notifies the
+// session activity tracker, and persists the event to the local SQLite buffer.
 func (c *Client) Enqueue(ctx context.Context, e *models.RawEvent) error {
 	c.mu.Lock()
 	e.UserID = c.userID
 	e.SessionID = c.sessionID
 	c.mu.Unlock()
-
-	// Extract and cache the active process name for StartSession auto-detection.
-	if e.EventType == models.EventSystemMetrics {
-		var data models.SystemMetricsData
-		if err := json.Unmarshal(e.Data, &data); err == nil && data.ActiveProcess != "" {
-			c.procMu.Lock()
-			c.lastProcess = data.ActiveProcess
-			c.procMu.Unlock()
-		}
-	}
 
 	// Notify the session tracker of user input activity.
 	switch e.EventType {

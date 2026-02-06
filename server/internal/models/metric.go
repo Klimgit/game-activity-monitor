@@ -6,18 +6,17 @@ import (
 )
 
 // EventType identifies the kind of raw input or system event.
+// The server is a generic event store — it stores all event types as-is in
+// raw_input_events.  Only the two types below require special server-side
+// handling (mirroring to dedicated long-term tables).
 type EventType string
 
 const (
-	EventMouseMove     EventType = "mouse_move"
-	EventMouseClick    EventType = "mouse_click"
-	EventKeyPress      EventType = "key_press"
-	EventKeyRelease    EventType = "key_release"
-	EventSystemMetrics EventType = "system_metrics"
-	// EventWindowMetrics is a client-side aggregated summary covering one
-	// aggregation window (default 30 s).  On the server it is stored both in
-	// raw_input_events (short-term, for real-time queries) and mirrored into
-	// session_windows (1-year retention, for ML training).
+	// EventMouseClick is mirrored to click_events (90-day retention) for
+	// per-session heatmap queries.
+	EventMouseClick EventType = "mouse_click"
+	// EventWindowMetrics is mirrored to session_windows (1-year retention)
+	// as the primary ML training dataset.
 	EventWindowMetrics EventType = "window_metrics"
 )
 
@@ -71,6 +70,11 @@ type WindowMetricsData struct {
 	Keystrokes    int       `json:"keystrokes"`
 	KeyHoldAvgMs  float64   `json:"key_hold_avg_ms"`
 	ActiveProcess string    `json:"active_process,omitempty"`
+	CPUAvg        float64   `json:"cpu_avg"`
+	CPUMax        float64   `json:"cpu_max"`
+	MemAvg        float64   `json:"mem_avg"`
+	GPUUtilAvg    float64   `json:"gpu_util_avg"`
+	GPUTempAvg    float64   `json:"gpu_temp_avg"`
 }
 
 // ClickPoint is used by the heatmap endpoint.

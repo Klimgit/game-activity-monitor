@@ -75,6 +75,13 @@ type WindowMetricsData struct {
 	Keystrokes    int       `json:"keystrokes"`
 	KeyHoldAvgMs  float64   `json:"key_hold_avg_ms"`
 	ActiveProcess string    `json:"active_process,omitempty"`
+	// Hardware averages aggregated from system_metrics events in this window.
+	// These are the primary ML features for detecting active gaming vs idle.
+	CPUAvg     float64 `json:"cpu_avg"`
+	CPUMax     float64 `json:"cpu_max"`
+	MemAvg     float64 `json:"mem_avg"`
+	GPUUtilAvg float64 `json:"gpu_util_avg"`
+	GPUTempAvg float64 `json:"gpu_temp_avg"`
 }
 
 // ActivityLabel carries a manual hotkey annotation to the server.
