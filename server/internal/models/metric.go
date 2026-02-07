@@ -55,7 +55,6 @@ type SystemMetricsData struct {
 	GPUTempC      float64 `json:"gpu_temp_c,omitempty"`
 	GPUMemUsedMB  int64   `json:"gpu_mem_used_mb,omitempty"`
 	ActiveProcess string  `json:"active_process,omitempty"`
-	WindowTitle   string  `json:"window_title,omitempty"`
 }
 
 // WindowMetricsData is the JSON payload inside a window_metrics RawEvent.

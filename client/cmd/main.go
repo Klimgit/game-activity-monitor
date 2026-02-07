@@ -5,7 +5,9 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/getlantern/systray"
 
@@ -17,6 +19,51 @@ import (
 	"game-activity-monitor/client/internal/models"
 	"game-activity-monitor/client/internal/storage"
 )
+
+// Dev-only: at most one open interval at a time (FSM aligned with server).
+var (
+	intervalMu    sync.Mutex
+	intervalStart *time.Time
+	intervalState string
+)
+
+func startIntervalMark(state string) {
+	intervalMu.Lock()
+	defer intervalMu.Unlock()
+	if intervalStart != nil {
+		log.Printf("interval: already open (%s), ignoring start %s", intervalState, state)
+		return
+	}
+	t := time.Now().UTC()
+	intervalStart = &t
+	intervalState = state
+	log.Printf("interval: started %s", state)
+}
+
+func endIntervalMark(ctx context.Context, client *api.Client, expected string) {
+	intervalMu.Lock()
+	if intervalStart == nil {
+		intervalMu.Unlock()
+		log.Printf("interval: end %s ignored (nothing open)", expected)
+		return
+	}
+	if intervalState != expected {
+		open := intervalState
+		intervalMu.Unlock()
+		log.Printf("interval: end %s ignored (open state is %s)", expected, open)
+		return
+	}
+	start := *intervalStart
+	intervalStart = nil
+	intervalState = ""
+	intervalMu.Unlock()
+	end := time.Now().UTC()
+	if err := client.CreateActivityInterval(ctx, expected, start, end); err != nil {
+		log.Printf("interval: %v", err)
+	} else {
+		log.Printf("interval: recorded %s (%.1fs)", expected, end.Sub(start).Seconds())
+	}
+}
 
 func main() {
 	// systray.Run must be called from the main goroutine.
@@ -64,7 +111,11 @@ func run(ctx context.Context, cancel context.CancelFunc, statusItem *systray.Men
 	if err != nil {
 		log.Fatalf("open sqlite: %v", err)
 	}
-	defer store.Close()
+	defer func() {
+		if cerr := store.Close(); cerr != nil {
+			log.Printf("close sqlite: %v", cerr)
+		}
+	}()
 
 	// ── API client ────────────────────────────────────────────────────────────
 	apiClient := api.NewClient(cfg.Server.URL, cfg.Offline.FlushInterval, store)
@@ -131,31 +182,19 @@ func run(ctx context.Context, cancel context.CancelFunc, statusItem *systray.Men
 				statusItem.SetTitle("Status: idle")
 			}
 		},
-		"mark_active": func() {
-			if err := apiClient.SendLabel(ctx, "active_gameplay"); err != nil {
-				log.Printf("label error: %v", err)
-			}
-		},
-		"mark_afk": func() {
-			if err := apiClient.SendLabel(ctx, "afk"); err != nil {
-				log.Printf("label error: %v", err)
-			}
-		},
-		"mark_menu": func() {
-			if err := apiClient.SendLabel(ctx, "menu"); err != nil {
-				log.Printf("label error: %v", err)
-			}
-		},
-		"mark_loading": func() {
-			if err := apiClient.SendLabel(ctx, "loading"); err != nil {
-				log.Printf("label error: %v", err)
-			}
-		},
+		"start_active":  func() { startIntervalMark("active_gameplay") },
+		"end_active":    func() { endIntervalMark(ctx, apiClient, "active_gameplay") },
+		"start_afk":     func() { startIntervalMark("afk") },
+		"end_afk":       func() { endIntervalMark(ctx, apiClient, "afk") },
+		"start_menu":    func() { startIntervalMark("menu") },
+		"end_menu":      func() { endIntervalMark(ctx, apiClient, "menu") },
+		"start_loading": func() { startIntervalMark("loading") },
+		"end_loading":   func() { endIntervalMark(ctx, apiClient, "loading") },
 	})
 
 	go hotkeyMgr.Start(ctx)
 
-	log.Println("game-monitor running — press hotkeys to control sessions")
+	log.Println("game-monitor running — hotkeys: session ctrl+shift+s/e; intervals ctrl+shift+1..8 (start/end per state)")
 	<-ctx.Done()
 }
 

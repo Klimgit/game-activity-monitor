@@ -5,7 +5,7 @@ import type {
   RawEvent,
   Session,
   SessionFilters,
-  ActivityLabel,
+  ActivityInterval,
 } from '../types/api'
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -67,22 +67,27 @@ export const sessionsApi = {
   },
 }
 
-// ── Labels ────────────────────────────────────────────────────────────────────
+// ── Activity intervals (ML) ─────────────────────────────────────────────────
 
-export const labelsApi = {
-  list: async (sessionId?: number): Promise<ActivityLabel[]> => {
-    const params = sessionId ? `?session_id=${sessionId}` : ''
-    const { data } = await client.get<ActivityLabel[]>(`/labels${params}`)
+export const intervalsApi = {
+  list: async (sessionId?: number): Promise<ActivityInterval[]> => {
+    const params = new URLSearchParams()
+    if (sessionId != null) params.set('session_id', String(sessionId))
+    const q = params.toString()
+    const { data } = await client.get<ActivityInterval[]>(
+      `/intervals${q ? `?${q}` : ''}`,
+    )
     return data
   },
 
   create: async (payload: {
-    session_id?: number
-    timestamp: string
+    session_id: number
     state: string
-    source: string
-  }): Promise<ActivityLabel> => {
-    const { data } = await client.post<ActivityLabel>('/labels', payload)
+    start_at: string
+    end_at: string
+    source?: string
+  }): Promise<ActivityInterval> => {
+    const { data } = await client.post<ActivityInterval>('/intervals', payload)
     return data
   },
 }

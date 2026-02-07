@@ -18,16 +18,14 @@ type Session struct {
 	UpdatedAt      time.Time  `json:"updated_at"      db:"updated_at"`
 }
 
-// ActivityLabel is a manual or auto-detected ground-truth label for a moment in time.
-// Used for dataset annotation.
-type ActivityLabel struct {
-	ID        int64     `json:"id"                   db:"id"`
-	UserID    int64     `json:"user_id"              db:"user_id"`
-	SessionID *int64    `json:"session_id,omitempty" db:"session_id"`
-	Timestamp time.Time `json:"timestamp"            db:"timestamp"`
-	// State: "active_gameplay" | "afk" | "menu" | "loading"
-	State string `json:"state"      db:"state"`
-	// Source: "manual_hotkey" | "auto_detected"
+// ActivityInterval is a ground-truth time range for ML (FSM: non-overlapping per session).
+type ActivityInterval struct {
+	ID        int64     `json:"id"         db:"id"`
+	UserID    int64     `json:"user_id"    db:"user_id"`
+	SessionID int64     `json:"session_id" db:"session_id"`
+	State     string    `json:"state"      db:"state"` // active_gameplay | afk | menu | loading
+	StartAt   time.Time `json:"start_at"   db:"start_at"`
+	EndAt     time.Time `json:"end_at"     db:"end_at"`
 	Source    string    `json:"source"     db:"source"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }

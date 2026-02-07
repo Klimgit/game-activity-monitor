@@ -64,10 +64,14 @@ func RegisterAll(m *Manager, cfg config.HotkeysConfig, actions map[string]func()
 	}{
 		{cfg.StartSession, "start_session"},
 		{cfg.EndSession, "end_session"},
-		{cfg.MarkActive, "mark_active"},
-		{cfg.MarkAFK, "mark_afk"},
-		{cfg.MarkMenu, "mark_menu"},
-		{cfg.MarkLoading, "mark_loading"},
+		{cfg.StartActiveGameplay, "start_active"},
+		{cfg.EndActiveGameplay, "end_active"},
+		{cfg.StartAFK, "start_afk"},
+		{cfg.EndAFK, "end_afk"},
+		{cfg.StartMenu, "start_menu"},
+		{cfg.EndMenu, "end_menu"},
+		{cfg.StartLoading, "start_loading"},
+		{cfg.EndLoading, "end_loading"},
 	}
 	for _, p := range pairs {
 		if fn, ok := actions[p.action]; ok {

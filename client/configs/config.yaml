@@ -10,20 +10,26 @@ auth:
 collectors:
   intervals:
     system_polling: 2s
-    aggregation_window: 30s
+    aggregation_window: 10s
   enabled:
     - mouse
     - keyboard
     - system   # merged collector: cpu + memory + active process in one event
     - gpu      # enables nvidia-smi / sysfs GPU utilization probe (set collectGPU=true)
 
+# Session: ctrl+shift+s / ctrl+shift+e
+# Dev-only interval labels: start/end per state (ctrl+shift+1..8)
 hotkeys:
   start_session: "ctrl+shift+s"
   end_session:   "ctrl+shift+e"
-  mark_active:   "ctrl+shift+a"
-  mark_afk:      "ctrl+shift+f"
-  mark_menu:     "ctrl+shift+m"
-  mark_loading:  "ctrl+shift+l"
+  start_active: "ctrl+shift+1"
+  end_active:   "ctrl+shift+2"
+  start_afk:    "ctrl+shift+3"
+  end_afk:      "ctrl+shift+4"
+  start_menu:   "ctrl+shift+5"
+  end_menu:     "ctrl+shift+6"
+  start_loading: "ctrl+shift+7"
+  end_loading:  "ctrl+shift+8"
 
 offline:
   max_queue_size: 50000

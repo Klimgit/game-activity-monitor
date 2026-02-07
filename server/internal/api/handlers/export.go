@@ -12,19 +12,29 @@ import (
 )
 
 // parseExportFilters extracts the shared from/to/game query parameters used by
-// both export endpoints.
-func parseExportFilters(c *gin.Context) (from, to time.Time, game string) {
+// both export endpoints. Dates must be YYYY-MM-DD when present.
+func parseExportFilters(c *gin.Context) (from, to time.Time, game string, err error) {
 	if s := c.Query("from"); s != "" {
-		from, _ = time.Parse("2006-01-02", s)
-	}
-	if s := c.Query("to"); s != "" {
-		to, _ = time.Parse("2006-01-02", s)
-		if !to.IsZero() {
-			to = to.Add(24*time.Hour - time.Nanosecond)
+		from, err = time.ParseInLocation("2006-01-02", s, time.UTC)
+		if err != nil {
+			return time.Time{}, time.Time{}, "", err
 		}
 	}
+	if s := c.Query("to"); s != "" {
+		var t time.Time
+		t, err = time.ParseInLocation("2006-01-02", s, time.UTC)
+		if err != nil {
+			return from, time.Time{}, "", err
+		}
+		to = t.Add(24*time.Hour - time.Nanosecond)
+	}
 	game = c.Query("game")
-	return
+	return from, to, game, nil
+}
+
+// writeCSVRow writes one CSV record; use with Flush + Writer.Error at the end.
+func writeCSVRow(w *csv.Writer, row []string) error {
+	return w.Write(row)
 }
 
 // ExportCSV streams session data as a UTF-8 CSV file.
@@ -32,7 +42,11 @@ func parseExportFilters(c *gin.Context) (from, to time.Time, game string) {
 func ExportCSV(deps *Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetInt64("user_id")
-		from, to, game := parseExportFilters(c)
+		from, to, game, err := parseExportFilters(c)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid from or to date (use YYYY-MM-DD)"})
+			return
+		}
 
 		sessions, err := deps.Storage.GetSessions(c.Request.Context(), uid, from, to, game)
 		if err != nil {
@@ -43,19 +57,22 @@ func ExportCSV(deps *Dependencies) gin.HandlerFunc {
 		var buf bytes.Buffer
 		w := csv.NewWriter(&buf)
 
-		_ = w.Write([]string{
+		if err := writeCSVRow(w, []string{
 			"session_id", "session_start", "session_end",
 			"game_name",
 			"total_duration_s", "active_duration_s", "afk_duration_s",
 			"activity_score", "state",
-		})
+		}); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "csv encoding error"})
+			return
+		}
 
 		for _, s := range sessions {
 			sessionEnd := ""
 			if s.SessionEnd != nil {
 				sessionEnd = s.SessionEnd.UTC().Format(time.RFC3339)
 			}
-			_ = w.Write([]string{
+			if err := writeCSVRow(w, []string{
 				strconv.FormatInt(s.ID, 10),
 				s.SessionStart.UTC().Format(time.RFC3339),
 				sessionEnd,
@@ -65,7 +82,10 @@ func ExportCSV(deps *Dependencies) gin.HandlerFunc {
 				strconv.Itoa(s.AFKDuration),
 				strconv.FormatFloat(s.ActivityScore, 'f', 4, 64),
 				s.State,
-			})
+			}); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "csv encoding error"})
+				return
+			}
 		}
 		w.Flush()
 
@@ -84,7 +104,11 @@ func ExportCSV(deps *Dependencies) gin.HandlerFunc {
 func ExportJSON(deps *Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetInt64("user_id")
-		from, to, game := parseExportFilters(c)
+		from, to, game, err := parseExportFilters(c)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid from or to date (use YYYY-MM-DD)"})
+			return
+		}
 
 		sessions, err := deps.Storage.GetSessions(c.Request.Context(), uid, from, to, game)
 		if err != nil {

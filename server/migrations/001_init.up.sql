@@ -58,18 +58,25 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON activity_sessions (user_id, sess
 CREATE INDEX IF NOT EXISTS idx_sessions_game ON activity_sessions (game_name, session_start DESC);
 
 -- ============================================================
--- activity_labels
--- Manual / auto ground-truth annotations for ML dataset.
+-- activity_intervals
+-- Ground-truth time ranges for ML (FSM: non-overlapping per session).
 -- ============================================================
-CREATE TABLE IF NOT EXISTS activity_labels (
-    id         BIGSERIAL   PRIMARY KEY,
-    user_id    BIGINT      NOT NULL REFERENCES users(id)             ON DELETE CASCADE,
-    session_id BIGINT               REFERENCES activity_sessions(id) ON DELETE SET NULL,
-    timestamp  TIMESTAMPTZ NOT NULL,
-    state      VARCHAR(50) NOT NULL,  -- active_gameplay | afk | menu | loading
-    source     VARCHAR(50) NOT NULL DEFAULT 'manual_hotkey',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS activity_intervals (
+    id          BIGSERIAL   PRIMARY KEY,
+    user_id     BIGINT      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    session_id  BIGINT      NOT NULL REFERENCES activity_sessions(id) ON DELETE CASCADE,
+    state       VARCHAR(50) NOT NULL CHECK (state IN (
+        'active_gameplay', 'afk', 'menu', 'loading'
+    )),
+    start_at    TIMESTAMPTZ NOT NULL,
+    end_at      TIMESTAMPTZ NOT NULL,
+    source      VARCHAR(50) NOT NULL DEFAULT 'client',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT activity_intervals_time_order CHECK (end_at > start_at)
 );
 
-CREATE INDEX IF NOT EXISTS idx_labels_user    ON activity_labels (user_id,    timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_labels_session ON activity_labels (session_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_activity_intervals_session
+    ON activity_intervals (session_id, start_at);
+
+CREATE INDEX IF NOT EXISTS idx_activity_intervals_user_time
+    ON activity_intervals (user_id, start_at DESC);

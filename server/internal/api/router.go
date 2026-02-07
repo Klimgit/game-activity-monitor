@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -19,7 +20,9 @@ func SetupRouter(store storage.Storage, jwtMgr *auth.JWTManager) *gin.Engine {
 	// Trust only loopback addresses so c.ClientIP() resolves correctly when the
 	// server runs behind a reverse proxy or inside Docker. Without this, Gin
 	// trusts all proxies and rate-limiting by IP becomes ineffective.
-	_ = r.SetTrustedProxies([]string{"127.0.0.1", "::1"})
+	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
+		log.Printf("SetTrustedProxies: %v", err)
+	}
 
 	r.Use(middleware.CORS())
 	r.Use(middleware.RateLimit(300, time.Minute)) // 300 req/min per IP globally
@@ -37,11 +40,11 @@ func SetupRouter(store storage.Storage, jwtMgr *auth.JWTManager) *gin.Engine {
 	v1.POST("/auth/login", handlers.Login(deps))
 
 	// ── Protected ───────────────────────────────────────────────────────────
-	auth := v1.Group("/")
-	auth.Use(middleware.AuthRequired(jwtMgr))
+	protected := v1.Group("/")
+	protected.Use(middleware.AuthRequired(jwtMgr))
 
 	// Metrics (high-throughput; generous rate limit for batch uploads)
-	metrics := auth.Group("/metrics")
+	metrics := protected.Group("/metrics")
 	metrics.Use(middleware.RateLimit(600, time.Minute))
 	{
 		metrics.POST("/batch", handlers.ReceiveMetricsBatch(deps))
@@ -49,7 +52,7 @@ func SetupRouter(store storage.Storage, jwtMgr *auth.JWTManager) *gin.Engine {
 	}
 
 	// Sessions
-	sessions := auth.Group("/sessions")
+	sessions := protected.Group("/sessions")
 	{
 		sessions.POST("/start", handlers.StartSession(deps))
 		sessions.POST("/:id/end", handlers.EndSession(deps))
@@ -57,21 +60,22 @@ func SetupRouter(store storage.Storage, jwtMgr *auth.JWTManager) *gin.Engine {
 		sessions.GET("/:id", handlers.GetSession(deps))
 	}
 
-	// Activity labels (dataset annotation)
-	labels := auth.Group("/labels")
+	// Activity intervals (ML ground truth)
+	intervals := protected.Group("/intervals")
 	{
-		labels.POST("", handlers.CreateLabel(deps))
-		labels.GET("", handlers.GetLabels(deps))
+		intervals.POST("", handlers.CreateActivityInterval(deps))
+		intervals.GET("", handlers.ListActivityIntervals(deps))
 	}
 
 	// Heatmap
-	auth.GET("/heatmap/:session_id", handlers.GetHeatmap(deps))
+	protected.GET("/heatmap/:session_id", handlers.GetHeatmap(deps))
 
-	// Export (stubs)
-	export := auth.Group("/export")
+	export := protected.Group("/export")
 	{
 		export.GET("/csv", handlers.ExportCSV(deps))
 		export.GET("/json", handlers.ExportJSON(deps))
+		export.GET("/dataset-windows.csv", handlers.ExportDatasetWindowsCSV(deps))
+		export.GET("/playtime.json", handlers.ExportPlaytimeJSON(deps))
 	}
 
 	return r
