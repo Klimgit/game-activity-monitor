@@ -31,20 +31,26 @@ Dashboard (React)
 
 ## Quick Start
 
-### Server
+### Server (minimal, Linux)
+
+No Docker group setup — the helper script uses `sudo`:
 
 ```bash
 cd server
-cp .env.example .env        # fill in DB_PASSWORD, JWT_SECRET
-docker-compose up -d        # starts TimescaleDB + server + nginx
+chmod +x run.sh
+./run.sh                    # creates .env on first run; edit DB_PASSWORD + JWT_SECRET, then ./run.sh again
 ```
+
+Or manually: `cp .env.example .env`, edit, then `sudo docker compose up -d --build`.
+
+Details: [server/QUICKSTART.md](server/QUICKSTART.md). Production with HTTPS/Nginx: [server/DEPLOY.md](server/DEPLOY.md).
 
 ### Client
 
 ```bash
 cd client
-cp configs/config.yaml.example configs/config.yaml   # set server URL + credentials
-go run cmd/main.go
+# edit configs/config.yaml — server.url (e.g. http://127.0.0.1:8000) and auth
+go run ./cmd
 ```
 
 ### Dashboard
