@@ -14,6 +14,8 @@ type Storage interface {
 	// --- Users ---
 	CreateUser(ctx context.Context, email, passwordHash string) (*models.User, error)
 	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
+	// ListUserIDs returns all user ids (for internal dataset export).
+	ListUserIDs(ctx context.Context) ([]int64, error)
 
 	// --- Raw events (hypertable) ---
 	SaveEventsBatch(ctx context.Context, events []*models.RawEvent) error
