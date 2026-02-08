@@ -13,14 +13,6 @@ import (
 	"game-activity-monitor/client/internal/models"
 )
 
-// systemCollector combines CPU, RAM, active process, and optionally GPU into a
-// single system_metrics event per tick. This replaces the three separate
-// collectors (cpu, memory, process) that each emitted partial events, requiring
-// awkward server-side merging by time window.
-//
-// GPU collection is opt-in (collectGPU=true) because it spawns a short-lived
-// nvidia-smi subprocess on every tick; users without a dedicated GPU or
-// NVIDIA drivers can leave it disabled.
 type systemCollector struct {
 	interval   time.Duration
 	collectGPU bool

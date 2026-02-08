@@ -282,12 +282,6 @@ func (b *offlineBackoff) recordSuccess() {
 	b.nextRetry = time.Time{}
 }
 
-// StartSyncWorker runs a loop that flushes pending SQLite events to the server.
-// It blocks until ctx is cancelled, then performs one final flush.
-//
-// When the server is unreachable the worker enters offline mode and applies
-// exponential back-off (up to 5 min) between retry attempts.  Events continue
-// to accumulate in SQLite during outages.
 func (c *Client) StartSyncWorker(ctx context.Context) {
 	ticker := time.NewTicker(c.flushInterval)
 	defer ticker.Stop()
@@ -315,8 +309,6 @@ func (c *Client) StartSyncWorker(ctx context.Context) {
 	}
 }
 
-// flush attempts one full drain of the SQLite queue.  Returns true when all
-// pending events were delivered, false on any network or auth error.
 func (c *Client) flush(ctx context.Context) bool {
 	c.mu.Lock()
 	tok := c.token
@@ -324,7 +316,6 @@ func (c *Client) flush(ctx context.Context) bool {
 	password := c.password
 	c.mu.Unlock()
 
-	// Auto-reconnect: re-authenticate if token is missing.
 	if tok == "" {
 		if email == "" {
 			return true // nothing to do — client not configured yet
