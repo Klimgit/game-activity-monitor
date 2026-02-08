@@ -14,12 +14,10 @@ import (
 	"game-activity-monitor/server/internal/models"
 )
 
-// TimescaleStorage implements Storage against a TimescaleDB (PostgreSQL) instance.
 type TimescaleStorage struct {
 	db *sql.DB
 }
 
-// NewTimescaleStorage wraps an already-opened *sql.DB.
 func NewTimescaleStorage(db *sql.DB) *TimescaleStorage {
 	return &TimescaleStorage{db: db}
 }
@@ -31,8 +29,6 @@ func (ts *TimescaleStorage) Ping(ctx context.Context) error {
 func (ts *TimescaleStorage) Close() error {
 	return ts.db.Close()
 }
-
-// ─── Users ────────────────────────────────────────────────────────────────────
 
 func (ts *TimescaleStorage) CreateUser(ctx context.Context, email, passwordHash string) (*models.User, error) {
 	var u models.User
@@ -82,8 +78,6 @@ func (ts *TimescaleStorage) ListUserIDs(ctx context.Context) ([]int64, error) {
 	return ids, rows.Err()
 }
 
-// ─── Raw events ───────────────────────────────────────────────────────────────
-
 func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*models.RawEvent) error {
 	if len(events) == 0 {
 		return nil
@@ -103,7 +97,6 @@ func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*model
 	}
 	defer closeStmt(rawStmt)
 
-	// Prepared statement for the long-term click store used by the heatmap.
 	clickStmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO click_events (user_id, session_id, timestamp, x, y, button)
 		VALUES ($1, $2, $3, $4, $5, $6)`)
@@ -112,7 +105,6 @@ func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*model
 	}
 	defer closeStmt(clickStmt)
 
-	// Prepared statement for aggregated window metrics used for ML training.
 	winStmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO session_windows
 		    (time, user_id, session_id, window_start, window_end, duration_s,
@@ -202,13 +194,11 @@ func scanEvents(rows *sql.Rows) ([]*models.RawEvent, error) {
 			sid := sessionID.Int64
 			e.SessionID = &sid
 		}
-		e.Data = json.RawMessage(dataBytes)
+		e.Data = dataBytes
 		events = append(events, &e)
 	}
 	return events, rows.Err()
 }
-
-// ─── Sessions ─────────────────────────────────────────────────────────────────
 
 func (ts *TimescaleStorage) CreateSession(ctx context.Context, s *models.Session) (*models.Session, error) {
 	var created models.Session
@@ -347,14 +337,11 @@ func scanSessions(rows *sql.Rows) ([]*models.Session, error) {
 	return sessions, rows.Err()
 }
 
-// ─── Activity intervals (ML ground truth) ─────────────────────────────────────
-
 func (ts *TimescaleStorage) CreateActivityInterval(ctx context.Context, iv *models.ActivityInterval) (*models.ActivityInterval, error) {
 	if iv.EndAt.Before(iv.StartAt) || iv.EndAt.Equal(iv.StartAt) {
 		return nil, fmt.Errorf("invalid interval: end_at must be after start_at")
 	}
 
-	// Ensure session belongs to user and check FSM non-overlap.
 	var owner int64
 	err := ts.db.QueryRowContext(ctx, `
 		SELECT user_id FROM activity_sessions WHERE id = $1`, iv.SessionID,
@@ -434,7 +421,6 @@ func (ts *TimescaleStorage) ListActivityIntervals(ctx context.Context, userID in
 	return list, rows.Err()
 }
 
-// SessionWindowsForUser returns session_windows rows in the time range.
 func (ts *TimescaleStorage) SessionWindowsForUser(ctx context.Context, userID int64, from, to time.Time, sessionID *int64) ([]SessionWindowRow, error) {
 	q := `
 		SELECT time, user_id, session_id, window_start, window_end, duration_s,
@@ -516,9 +502,6 @@ func (ts *TimescaleStorage) PlaytimeByState(ctx context.Context, userID int64, f
 // ─── Heatmap ──────────────────────────────────────────────────────────────────
 
 func (ts *TimescaleStorage) GetHeatmapData(ctx context.Context, sessionID, userID int64) ([]models.ClickPoint, error) {
-	// Query the dedicated click_events table (90-day retention) instead of the
-	// short-lived raw_input_events hypertable (1-hour retention). This means
-	// heatmaps remain available long after the raw event buffer has been pruned.
 	rows, err := ts.db.QueryContext(ctx, `
 		SELECT x, y
 		FROM   click_events

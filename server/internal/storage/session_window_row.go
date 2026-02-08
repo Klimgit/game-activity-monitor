@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// SessionWindowRow is one row from session_windows for ML export.
 type SessionWindowRow struct {
 	Time          time.Time
 	UserID        int64

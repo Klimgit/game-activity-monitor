@@ -61,7 +61,6 @@ func CreateActivityInterval(deps *Dependencies) gin.HandlerFunc {
 	}
 }
 
-// ListActivityIntervals returns intervals for the user, optional session and date range.
 func ListActivityIntervals(deps *Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetInt64("user_id")

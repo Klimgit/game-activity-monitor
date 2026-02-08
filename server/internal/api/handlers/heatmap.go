@@ -9,8 +9,6 @@ import (
 	"game-activity-monitor/server/internal/models"
 )
 
-// GetHeatmap returns all mouse-click coordinates for a session.
-// The React dashboard renders them with heatmap.js.
 func GetHeatmap(deps *Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetInt64("user_id")

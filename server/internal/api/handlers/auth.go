@@ -19,7 +19,6 @@ type authResponse struct {
 	User  *models.User `json:"user"`
 }
 
-// Register creates a new user account and returns a JWT.
 func Register(deps *Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req registerRequest
@@ -65,7 +64,6 @@ type loginRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
-// Login authenticates a user and returns a JWT.
 func Login(deps *Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req loginRequest

@@ -1,10 +1,3 @@
-// Command collectdataset writes the ML training CSV by reading session_windows and
-// activity_intervals from PostgreSQL. Run it on the server or anywhere with DATABASE_URL
-// (same as the API). It does not use JWT — it is an operator/service tool.
-//
-// Example:
-//
-//	DATABASE_URL="postgres://..." go run ./cmd/collectdataset -from 2025-03-01 -to 2025-03-29 -o /var/lib/ml/dataset.csv
 package main
 
 import (

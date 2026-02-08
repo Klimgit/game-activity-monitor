@@ -11,9 +11,6 @@ import (
 	"game-activity-monitor/server/internal/models"
 )
 
-// validatedSessionIDs returns the set of session IDs present in the batch
-// that actually belong to uid.  Unknown IDs (wrong owner or non-existent) are
-// not included; their events will have session_id set to NULL instead.
 func validatedSessionIDs(c *gin.Context, deps *Dependencies, uid int64, events []*models.RawEvent) map[int64]bool {
 	seen := make(map[int64]struct{})
 	for _, e := range events {
@@ -57,15 +54,11 @@ func ReceiveMetricsBatch(deps *Dependencies) gin.HandlerFunc {
 			return
 		}
 
-		// Validate session IDs upfront (per unique ID, not per event).
-		// Events whose session_id belongs to a different user are
-		// re-attributed to NULL rather than rejected — so a single bad
-		// entry does not discard the whole batch.
 		validSIDs := validatedSessionIDs(c, deps, uid, events)
 
 		for _, e := range events {
 			if e == nil {
-				continue // guard against null JSON elements in the array
+				continue
 			}
 			e.UserID = uid
 			if e.SessionID != nil && !validSIDs[*e.SessionID] {
@@ -73,7 +66,6 @@ func ReceiveMetricsBatch(deps *Dependencies) gin.HandlerFunc {
 			}
 		}
 
-		// Compact out any nil entries before hitting the DB.
 		clean := events[:0]
 		for _, e := range events {
 			if e != nil {
@@ -91,8 +83,6 @@ func ReceiveMetricsBatch(deps *Dependencies) gin.HandlerFunc {
 	}
 }
 
-// GetRecentMetrics returns raw events from the last N seconds (default 30).
-// Used by the React dashboard for the real-time polling page.
 func GetRecentMetrics(deps *Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetInt64("user_id")
