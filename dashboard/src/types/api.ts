@@ -78,6 +78,11 @@ export interface WindowMetricsData {
   speed_max: number
   keystrokes: number
   key_hold_avg_ms: number
+  key_press_interval_avg_ms: number
+  key_w: number
+  key_a: number
+  key_s: number
+  key_d: number
   active_process?: string
   cpu_avg: number
   cpu_max: number

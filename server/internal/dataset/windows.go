@@ -61,6 +61,7 @@ func WriteDatasetWindowsCSV(ctx context.Context, w io.Writer, st storage.Storage
 	header := []string{
 		"user_id", "session_id", "window_index", "window_start", "window_end", "duration_s",
 		"mouse_moves", "mouse_clicks", "speed_avg", "speed_max", "keystrokes", "key_hold_avg_ms",
+		"key_press_interval_avg_ms", "key_w", "key_a", "key_s", "key_d",
 		"active_process", "cpu_avg", "cpu_max", "mem_avg", "gpu_util_avg", "gpu_temp_avg", "label",
 	}
 	if includeHeader {
@@ -97,6 +98,11 @@ func WriteDatasetWindowsCSV(ctx context.Context, w io.Writer, st storage.Storage
 			strconv.FormatFloat(r.SpeedMax, 'f', 6, 64),
 			strconv.Itoa(r.Keystrokes),
 			strconv.FormatFloat(r.KeyHoldAvgMs, 'f', 4, 64),
+			strconv.FormatFloat(r.KeyPressIntervalAvgMs, 'f', 4, 64),
+			strconv.Itoa(r.KeyW),
+			strconv.Itoa(r.KeyA),
+			strconv.Itoa(r.KeyS),
+			strconv.Itoa(r.KeyD),
 			r.ActiveProcess,
 			strconv.FormatFloat(r.CPUAvg, 'f', 4, 64),
 			strconv.FormatFloat(r.CPUMax, 'f', 4, 64),

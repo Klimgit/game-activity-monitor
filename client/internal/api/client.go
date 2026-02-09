@@ -17,8 +17,8 @@ import (
 )
 
 // Client handles authentication and communication with the game-monitor server.
-// Unsent events are buffered in the local SQLite storage; the sync worker
-// flushes them on a regular interval.
+// Unsent events are buffered briefly in SQLite while offline or between flushes;
+// after a session ends, rows for that session are removed locally (metrics must be on the server).
 //
 // Thread-safety: all exported methods are safe for concurrent use. The fields
 // token, userID, and sessionID are guarded by mu.
@@ -166,8 +166,8 @@ type endSessionRequest struct {
 	ActivityScore  float64 `json:"activity_score"`
 }
 
-// EndSession stops the tracker, computes real durations, closes the active
-// session on the server, and clears the local session ID.
+// EndSession flushes pending metrics to the server, closes the session on the server,
+// clears the local session ID, and deletes any remaining buffered rows for that session.
 func (c *Client) EndSession(ctx context.Context) error {
 	c.mu.Lock()
 	if c.sessionID == nil {
@@ -176,6 +176,10 @@ func (c *Client) EndSession(ctx context.Context) error {
 	}
 	sid := *c.sessionID
 	c.mu.Unlock()
+
+	if err := c.flushUntilEmpty(ctx); err != nil {
+		return fmt.Errorf("end session: %w", err)
+	}
 
 	total, active, afk, score := c.tracker.Stop()
 	req := endSessionRequest{
@@ -192,6 +196,12 @@ func (c *Client) EndSession(ctx context.Context) error {
 	c.mu.Lock()
 	c.sessionID = nil
 	c.mu.Unlock()
+
+	if n, err := c.store.DeleteBySessionID(ctx, sid); err != nil {
+		log.Printf("storage: delete session %d pending rows: %v", sid, err)
+	} else if n > 0 {
+		log.Printf("storage: cleared %d local row(s) for ended session %d", n, sid)
+	}
 	return nil
 }
 
@@ -303,6 +313,35 @@ func (c *Client) StartSyncWorker(ctx context.Context) {
 			c.flush(shutCtx) //nolint:errcheck — best-effort on shutdown
 			cancel()
 			return
+		}
+	}
+}
+
+// flushUntilEmpty keeps syncing until the local queue is empty or ctx/deadline expires.
+func (c *Client) flushUntilEmpty(ctx context.Context) error {
+	const (
+		maxWait = 45 * time.Second
+		poll    = 25 * time.Millisecond
+	)
+	deadline := time.Now().Add(maxWait)
+	for {
+		if !c.flush(ctx) {
+			return fmt.Errorf("cannot reach server to sync metrics")
+		}
+		n, err := c.store.PendingCount(ctx)
+		if err != nil {
+			return fmt.Errorf("pending count: %w", err)
+		}
+		if n == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout: %d metric event(s) still queued", n)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(poll):
 		}
 	}
 }

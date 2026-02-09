@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -40,12 +41,16 @@ func New(path string) (*LocalStorage, error) {
 	db.SetMaxOpenConns(1)
 
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
+		if cerr := db.Close(); cerr != nil {
+			return nil, fmt.Errorf("storage.New: enable WAL: %w (close db: %w)", err, cerr)
+		}
 		return nil, fmt.Errorf("storage.New: enable WAL: %w", err)
 	}
 
 	if _, err := db.Exec(schema); err != nil {
-		db.Close()
+		if cerr := db.Close(); cerr != nil {
+			return nil, fmt.Errorf("storage.New: apply schema: %w (close db: %w)", err, cerr)
+		}
 		return nil, fmt.Errorf("storage.New: apply schema: %w", err)
 	}
 
@@ -80,7 +85,7 @@ func (s *LocalStorage) Save(ctx context.Context, e *models.RawEvent) error {
 	return err
 }
 
-func (s *LocalStorage) FetchBatch(ctx context.Context, limit int) ([]*models.RawEvent, []int64, error) {
+func (s *LocalStorage) FetchBatch(ctx context.Context, limit int) (events []*models.RawEvent, ids []int64, err error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, user_id, session_id, timestamp, event_type, data
 		FROM   pending_events
@@ -89,10 +94,11 @@ func (s *LocalStorage) FetchBatch(ctx context.Context, limit int) ([]*models.Raw
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
-
-	var events []*models.RawEvent
-	var ids []int64
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			err = errors.Join(err, cerr)
+		}
+	}()
 
 	for rows.Next() {
 		var (
@@ -103,7 +109,7 @@ func (s *LocalStorage) FetchBatch(ctx context.Context, limit int) ([]*models.Raw
 			evType    string
 			dataStr   string
 		)
-		if err := rows.Scan(&id, &userID, &sessionID, &tsNano, &evType, &dataStr); err != nil {
+		if err = rows.Scan(&id, &userID, &sessionID, &tsNano, &evType, &dataStr); err != nil {
 			return nil, nil, err
 		}
 
@@ -122,7 +128,25 @@ func (s *LocalStorage) FetchBatch(ctx context.Context, limit int) ([]*models.Raw
 		ids = append(ids, id)
 	}
 
-	return events, ids, rows.Err()
+	err = rows.Err()
+	return events, ids, err
+}
+
+// PendingCount returns how many rows are waiting to be sent.
+func (s *LocalStorage) PendingCount(ctx context.Context) (int64, error) {
+	var n int64
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pending_events`).Scan(&n)
+	return n, err
+}
+
+// DeleteBySessionID removes buffered events for a session (after they were sent, or to discard leftovers).
+func (s *LocalStorage) DeleteBySessionID(ctx context.Context, sessionID int64) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM pending_events WHERE session_id = ?`, sessionID)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return n, err
 }
 
 func (s *LocalStorage) DeleteByIDs(ctx context.Context, ids []int64) error {

@@ -18,6 +18,11 @@ CREATE TABLE IF NOT EXISTS session_windows (
     speed_max        FLOAT       NOT NULL DEFAULT 0,
     keystrokes       INT         NOT NULL DEFAULT 0,
     key_hold_avg_ms  FLOAT       NOT NULL DEFAULT 0,
+    key_press_interval_avg_ms FLOAT NOT NULL DEFAULT 0,
+    key_w            INT         NOT NULL DEFAULT 0,
+    key_a            INT         NOT NULL DEFAULT 0,
+    key_s            INT         NOT NULL DEFAULT 0,
+    key_d            INT         NOT NULL DEFAULT 0,
     active_process   TEXT        NOT NULL DEFAULT ''
 );
 
