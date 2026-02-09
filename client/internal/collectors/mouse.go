@@ -26,9 +26,10 @@ func (m *mouseCollector) Start(ctx context.Context, out chan<- *models.RawEvent)
 	ch := m.bus.Subscribe()
 
 	var (
-		lastX, lastY int16
-		lastMoveTime time.Time
-		lastEmitTime time.Time
+		lastX, lastY     int16
+		lastMoveTime     time.Time
+		lastEmitTime     time.Time
+		lastEmittedSpeed float64
 	)
 
 	for {
@@ -56,13 +57,22 @@ func (m *mouseCollector) Start(ctx context.Context, out chan<- *models.RawEvent)
 				if now.Sub(lastEmitTime) < minMoveInterval {
 					continue
 				}
+
+				accel := 0.0
+				if !lastEmitTime.IsZero() {
+					dtEmit := now.Sub(lastEmitTime).Seconds()
+					if dtEmit > 0 {
+						accel = (speed - lastEmittedSpeed) / dtEmit
+					}
+				}
 				lastEmitTime = now
+				lastEmittedSpeed = speed
 
 				out <- &models.RawEvent{
 					Timestamp: now,
 					EventType: models.EventMouseMove,
 					Data: models.MustMarshal(models.MouseMoveData{
-						X: int(ev.X), Y: int(ev.Y), Speed: speed,
+						X: int(ev.X), Y: int(ev.Y), Speed: speed, Acceleration: accel,
 					}),
 				}
 

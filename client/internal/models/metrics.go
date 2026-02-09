@@ -25,9 +25,10 @@ type RawEvent struct {
 }
 
 type MouseMoveData struct {
-	X     int     `json:"x"`
-	Y     int     `json:"y"`
-	Speed float64 `json:"speed"`
+	X            int     `json:"x"`
+	Y            int     `json:"y"`
+	Speed        float64 `json:"speed"`
+	Acceleration float64 `json:"acceleration"` // px/s², derivative of scalar speed between emitted samples
 }
 
 type MouseClickData struct {
@@ -42,12 +43,13 @@ type KeyEventData struct {
 }
 
 type SystemMetricsData struct {
-	CPUPercent    float64 `json:"cpu_percent"`
-	MemPercent    float64 `json:"mem_percent"`
-	GPUPercent    float64 `json:"gpu_percent,omitempty"`
-	GPUTempC      float64 `json:"gpu_temp_c,omitempty"`
-	GPUMemUsedMB  int64   `json:"gpu_mem_used_mb,omitempty"`
-	ActiveProcess string  `json:"active_process,omitempty"`
+	CPUPercent            float64 `json:"cpu_percent"`
+	MemPercent            float64 `json:"mem_percent"`
+	GPUPercent            float64 `json:"gpu_percent,omitempty"`
+	GPUTempC              float64 `json:"gpu_temp_c,omitempty"`
+	GPUMemUsedMB          int64   `json:"gpu_mem_used_mb,omitempty"`
+	ActiveProcess         string  `json:"active_process,omitempty"`
+	ForegroundWindowTitle string  `json:"foreground_window_title,omitempty"`
 }
 
 type WindowMetricsData struct {
@@ -67,6 +69,9 @@ type WindowMetricsData struct {
 	KeyS                  int     `json:"key_s"`
 	KeyD                  int     `json:"key_d"`
 	ActiveProcess         string  `json:"active_process,omitempty"`
+	ForegroundWindowTitle string  `json:"foreground_window_title,omitempty"`
+	CursorAccelAvg        float64 `json:"cursor_accel_avg"`
+	CursorAccelMax        float64 `json:"cursor_accel_max"`
 	CPUAvg                float64 `json:"cpu_avg"`
 	CPUMax                float64 `json:"cpu_max"`
 	MemAvg                float64 `json:"mem_avg"`

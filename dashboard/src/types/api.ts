@@ -48,6 +48,8 @@ export interface SystemMetricsData {
   gpu_temp_c?: number
   gpu_mem_used_mb?: number
   active_process?: string
+  /** Foreground window caption (client); may be empty on Wayland/unsupported */
+  foreground_window_title?: string
   window_title?: string
 }
 
@@ -55,6 +57,7 @@ export interface MouseMoveData {
   x: number
   y: number
   speed: number
+  acceleration?: number
 }
 
 export interface MouseClickData {
@@ -76,6 +79,8 @@ export interface WindowMetricsData {
   mouse_clicks: number
   speed_avg: number
   speed_max: number
+  cursor_accel_avg: number
+  cursor_accel_max: number
   keystrokes: number
   key_hold_avg_ms: number
   key_press_interval_avg_ms: number
@@ -84,6 +89,7 @@ export interface WindowMetricsData {
   key_s: number
   key_d: number
   active_process?: string
+  foreground_window_title?: string
   cpu_avg: number
   cpu_max: number
   mem_avg: number

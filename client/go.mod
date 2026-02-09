@@ -11,6 +11,8 @@ require (
 )
 
 require (
+	github.com/BurntSushi/xgb v0.0.0-20210121224620-deaf085860bc // indirect
+	github.com/BurntSushi/xgbutil v0.0.0-20190907113008-ad855c713046 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/getlantern/context v0.0.0-20190109183933-c447772a6520 // indirect
 	github.com/getlantern/errors v0.0.0-20190325191628-abdb3e3e36f7 // indirect

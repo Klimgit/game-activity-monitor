@@ -1,0 +1,4 @@
+ALTER TABLE session_windows
+    ADD COLUMN IF NOT EXISTS cursor_accel_avg FLOAT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS cursor_accel_max FLOAT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS foreground_window_title TEXT NOT NULL DEFAULT '';
