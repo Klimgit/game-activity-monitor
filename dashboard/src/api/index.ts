@@ -85,7 +85,6 @@ export const intervalsApi = {
     state: string
     start_at: string
     end_at: string
-    source?: string
   }): Promise<ActivityInterval> => {
     const { data } = await client.post<ActivityInterval>('/intervals', payload)
     return data

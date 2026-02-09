@@ -70,7 +70,6 @@ CREATE TABLE IF NOT EXISTS activity_intervals (
     )),
     start_at    TIMESTAMPTZ NOT NULL,
     end_at      TIMESTAMPTZ NOT NULL,
-    source      VARCHAR(50) NOT NULL DEFAULT 'client',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT activity_intervals_time_order CHECK (end_at > start_at)
 );

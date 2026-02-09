@@ -29,7 +29,7 @@ type Client struct {
 	store         *storage.LocalStorage
 
 	// mu guards token, userID, and sessionID which are accessed from the
-	// forwardEvents goroutine, the hotkey goroutine, and the sync worker.
+	// forwardEvents goroutine and the sync worker.
 	mu        sync.Mutex
 	token     string
 	userID    int64
@@ -202,7 +202,6 @@ type createIntervalRequest struct {
 	State     string    `json:"state"`
 	StartAt   time.Time `json:"start_at"`
 	EndAt     time.Time `json:"end_at"`
-	Source    string    `json:"source"`
 }
 
 // CreateActivityInterval posts a closed [start_at, end_at] interval for the current session.
@@ -219,7 +218,6 @@ func (c *Client) CreateActivityInterval(ctx context.Context, state string, start
 		State:     state,
 		StartAt:   start.UTC(),
 		EndAt:     end.UTC(),
-		Source:    "dev_hotkey",
 	}
 	if err := c.post(ctx, "/api/v1/intervals", req, nil); err != nil {
 		return fmt.Errorf("create interval: %w", err)

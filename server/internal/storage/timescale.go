@@ -372,13 +372,13 @@ func (ts *TimescaleStorage) CreateActivityInterval(ctx context.Context, iv *mode
 
 	var out models.ActivityInterval
 	err = ts.db.QueryRowContext(ctx, `
-		INSERT INTO activity_intervals (user_id, session_id, state, start_at, end_at, source)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, user_id, session_id, state, start_at, end_at, source, created_at`,
-		iv.UserID, iv.SessionID, iv.State, iv.StartAt, iv.EndAt, iv.Source,
+		INSERT INTO activity_intervals (user_id, session_id, state, start_at, end_at)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, user_id, session_id, state, start_at, end_at, created_at`,
+		iv.UserID, iv.SessionID, iv.State, iv.StartAt, iv.EndAt,
 	).Scan(
 		&out.ID, &out.UserID, &out.SessionID, &out.State,
-		&out.StartAt, &out.EndAt, &out.Source, &out.CreatedAt,
+		&out.StartAt, &out.EndAt, &out.CreatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("storage.CreateActivityInterval: %w", err)
@@ -388,7 +388,7 @@ func (ts *TimescaleStorage) CreateActivityInterval(ctx context.Context, iv *mode
 
 func (ts *TimescaleStorage) ListActivityIntervals(ctx context.Context, userID int64, sessionID *int64, from, to time.Time) ([]*models.ActivityInterval, error) {
 	q := `
-		SELECT id, user_id, session_id, state, start_at, end_at, source, created_at
+		SELECT id, user_id, session_id, state, start_at, end_at, created_at
 		FROM   activity_intervals
 		WHERE  user_id = $1
 		  AND end_at >= $2 AND start_at <= $3`
@@ -412,7 +412,7 @@ func (ts *TimescaleStorage) ListActivityIntervals(ctx context.Context, userID in
 		var iv models.ActivityInterval
 		if err := rows.Scan(
 			&iv.ID, &iv.UserID, &iv.SessionID, &iv.State,
-			&iv.StartAt, &iv.EndAt, &iv.Source, &iv.CreatedAt,
+			&iv.StartAt, &iv.EndAt, &iv.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

@@ -120,7 +120,7 @@ export default function Sessions() {
           <div className="p-8 text-center text-slate-400">Loading…</div>
         ) : sessions.length === 0 ? (
           <div className="p-8 text-center text-slate-400">
-            No sessions found. Start the desktop client and press <kbd className="px-1 bg-slate-700 rounded">Ctrl+Shift+S</kbd>.
+            No sessions found. Start the desktop client and use the tray menu → Session → Start session.
           </div>
         ) : (
           <div className="overflow-x-auto">
