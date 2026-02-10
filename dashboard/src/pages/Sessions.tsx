@@ -17,6 +17,18 @@ function mlSec(m: Record<string, number> | undefined, key: string) {
   return Math.round(m[key] ?? 0)
 }
 
+const ML_STATE_KEYS = [
+  { key: 'active_gameplay', label: 'Active gameplay' },
+  { key: 'afk', label: 'AFK' },
+  { key: 'menu', label: 'Menu' },
+  { key: 'loading', label: 'Loading' },
+] as const
+
+function sumMlSeconds(m: Record<string, number> | undefined) {
+  if (!m) return 0
+  return ML_STATE_KEYS.reduce((s, { key }) => s + (m[key] ?? 0), 0)
+}
+
 function ActivityBadge({ score }: { score: number }) {
   const pct = Math.round(score * 100)
   const color =
@@ -117,6 +129,11 @@ function GameNameCell({ session }: { session: Session }) {
 export default function Sessions() {
   const [filters, setFilters] = useState<SessionFilters>({})
   const [applied, setApplied] = useState<SessionFilters>({})
+  const [mlModalSession, setMlModalSession] = useState<Session | null>(null)
+  const [mlModalLoading, setMlModalLoading] = useState(false)
+  const [mlModalError, setMlModalError] = useState<string | null>(null)
+
+  const queryClient = useQueryClient()
 
   const { data: sessions = [], isLoading, refetch } = useQuery({
     queryKey: ['sessions', applied],
@@ -135,6 +152,27 @@ export default function Sessions() {
     (s: number, sess: Session) => s + mlSec(sess.ml_playtime_seconds, 'active_gameplay'),
     0,
   )
+
+  async function openMlModal(sessionId: number) {
+    setMlModalSession(null)
+    setMlModalError(null)
+    setMlModalLoading(true)
+    try {
+      const s = await sessionsApi.get(sessionId)
+      setMlModalSession(s)
+      void queryClient.invalidateQueries({ queryKey: ['sessions'] })
+    } catch {
+      setMlModalError('Could not load session. Try again.')
+    } finally {
+      setMlModalLoading(false)
+    }
+  }
+
+  function closeMlModal() {
+    setMlModalSession(null)
+    setMlModalError(null)
+    setMlModalLoading(false)
+  }
 
   return (
     <div className="space-y-6">
@@ -184,6 +222,82 @@ export default function Sessions() {
       </div>
 
       {/* ── Summary ──────────────────────────────────────────────────────── */}
+      {mlModalSession != null || mlModalLoading || mlModalError ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ml-modal-title"
+          onClick={closeMlModal}
+        >
+          <div
+            className="card max-w-md w-full shadow-xl border border-slate-600"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-2 mb-4">
+              <div>
+                <h2 id="ml-modal-title" className="text-lg font-semibold text-white">
+                  Model estimates (this session)
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Sums of window durations by predicted label (classifier on{' '}
+                  <code className="text-slate-400">session_windows</code>). Refresh after new metrics.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary text-xs py-1 px-2 shrink-0"
+                onClick={closeMlModal}
+              >
+                Close
+              </button>
+            </div>
+
+            {mlModalLoading && (
+              <p className="text-slate-400 text-sm py-4">Loading…</p>
+            )}
+            {mlModalError && (
+              <p className="text-red-400 text-sm py-2">{mlModalError}</p>
+            )}
+            {mlModalSession && !mlModalLoading && (
+              <div className="space-y-3 text-sm">
+                <p className="text-slate-400">
+                  Session #{mlModalSession.id}
+                  {mlModalSession.game_name ? (
+                    <span className="text-slate-300"> · {mlModalSession.game_name}</span>
+                  ) : null}
+                </p>
+                <ul className="space-y-2 divide-y divide-slate-700/80">
+                  {ML_STATE_KEYS.map(({ key, label }) => (
+                    <li key={key} className="flex justify-between gap-4 pt-2 first:pt-0">
+                      <span className="text-slate-300">{label}</span>
+                      <span className="font-mono text-slate-100 tabular-nums">
+                        {fmtDuration(mlSec(mlModalSession.ml_playtime_seconds, key))}
+                        <span className="text-slate-500 text-xs ml-2">
+                          ({mlSec(mlModalSession.ml_playtime_seconds, key)}s)
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-slate-500 text-xs pt-2 border-t border-slate-700">
+                  Total (ML-covered windows):{' '}
+                  <span className="text-slate-300 font-mono">
+                    {fmtDuration(Math.round(sumMlSeconds(mlModalSession.ml_playtime_seconds)))}
+                  </span>
+                </p>
+                {sumMlSeconds(mlModalSession.ml_playtime_seconds) <= 0 && (
+                  <p className="text-amber-400/90 text-xs">
+                    No ML rows for this session yet — the inference service must be running when metrics
+                    arrive, or the session has no window_metrics stored.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       {sessions.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="card text-center">
@@ -229,6 +343,7 @@ export default function Sessions() {
                     'ML afk',
                     'ML menu',
                     'ML load',
+                    'ML details',
                     'Activity',
                     'State',
                   ].map((h) => (
@@ -265,6 +380,16 @@ export default function Sessions() {
                     </td>
                     <td className="px-4 py-3 text-violet-400/90 text-xs whitespace-nowrap">
                       {fmtDuration(mlSec(s.ml_playtime_seconds, 'loading'))}
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        className="btn-secondary text-xs py-1 px-2 whitespace-nowrap"
+                        title="Fetch latest model breakdown for this session from the server"
+                        onClick={() => openMlModal(s.id)}
+                      >
+                        Load ML
+                      </button>
                     </td>
                     <td className="px-4 py-3">
                       <ActivityBadge score={s.activity_score} />
