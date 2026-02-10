@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -63,8 +64,11 @@ func main() {
 	if mlURL != "" {
 		pred = inference.NewHTTPPredictor(mlURL)
 		log.Printf("ML inference enabled: %s", mlURL)
+		if _, set := os.LookupEnv("ML_INFERENCE_URL"); !set {
+			log.Println("  (env ML_INFERENCE_URL unset — using default; export ML_INFERENCE_URL= to disable ML)")
+		}
 	} else {
-		log.Println("ML inference disabled: set ML_INFERENCE_URL so window_metrics get ml_predicted_state on ingest")
+		log.Println("ML inference disabled: ML_INFERENCE_URL is explicitly empty")
 	}
 	store := storage.NewTimescaleStorage(db, pred)
 	jwtMgr := auth.NewJWTManager(cfg.Auth.JWTSecret, cfg.Auth.TokenDuration)
