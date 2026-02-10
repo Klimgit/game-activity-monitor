@@ -7,6 +7,8 @@ Requires: Go toolchain, server module at ../server, DATABASE_URL or --database-u
 Example:
   export DATABASE_URL='postgres://...'
   python prepare_dataset.py --from 2026-03-01 --to 2026-04-01 --out data/raw_windows.csv
+
+Training is not run locally: upload the CSV to Colab/Kaggle and use colab/train_classifier.ipynb.
 """
 
 from __future__ import annotations
