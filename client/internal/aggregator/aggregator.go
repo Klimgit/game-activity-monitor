@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"math"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/vcaesar/keycode"
 
 	"game-activity-monitor/client/internal/models"
 )
@@ -166,19 +169,40 @@ func (w *windowAccumulator) ingest(ev *models.RawEvent) {
 	}
 }
 
+// countWASD increments counters for physical W/A/S/D. Keys from gohook use either a
+// single letter (Keychar) or "key_<code>" when Keychar is unset — e.g. games emit
+// key_17 for W because hook Keycodes match github.com/vcaesar/keycode.
 func countWASD(key string, w, a, s, d *int) {
 	k := strings.TrimSpace(strings.ToLower(key))
-	if len(k) != 1 {
+	if len(k) == 1 {
+		switch k[0] {
+		case 'w':
+			*w++
+		case 'a':
+			*a++
+		case 's':
+			*s++
+		case 'd':
+			*d++
+		}
 		return
 	}
-	switch k[0] {
-	case 'w':
+	if !strings.HasPrefix(k, "key_") {
+		return
+	}
+	u, err := strconv.ParseUint(strings.TrimPrefix(k, "key_"), 10, 16)
+	if err != nil {
+		return
+	}
+	code := uint16(u)
+	switch code {
+	case keycode.Keycode["w"]:
 		*w++
-	case 'a':
+	case keycode.Keycode["a"]:
 		*a++
-	case 's':
+	case keycode.Keycode["s"]:
 		*s++
-	case 'd':
+	case keycode.Keycode["d"]:
 		*d++
 	}
 }
