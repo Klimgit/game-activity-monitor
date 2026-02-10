@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gen2brain/dlgs"
 	"github.com/getlantern/systray"
 
 	"game-activity-monitor/client/internal/aggregator"
@@ -19,6 +18,7 @@ import (
 	"game-activity-monitor/client/internal/config"
 	"game-activity-monitor/client/internal/models"
 	"game-activity-monitor/client/internal/storage"
+	"game-activity-monitor/client/internal/trayprompt"
 )
 
 // Dev-only: at most one open interval at a time (FSM aligned with server).
@@ -26,9 +26,6 @@ var (
 	intervalMu    sync.Mutex
 	intervalStart *time.Time
 	intervalState string
-
-	// Last game name entered in the Start session dialog (prefill next time).
-	lastSessionGameName string
 )
 
 func startIntervalMark(state string) {
@@ -73,8 +70,9 @@ func endIntervalMark(ctx context.Context, client *api.Client, expected string) {
 type trayMenu struct {
 	status *systray.MenuItem
 
-	startSession *systray.MenuItem
-	endSession   *systray.MenuItem
+	startSession         *systray.MenuItem
+	startSessionWithName *systray.MenuItem
+	endSession           *systray.MenuItem
 
 	startActive, endActive   *systray.MenuItem
 	startAFK, endAFK         *systray.MenuItem
@@ -100,7 +98,14 @@ func onReady() {
 	systray.AddSeparator()
 
 	sessionRoot := systray.AddMenuItem("Session", "Start or end a gaming session")
-	tray.startSession = sessionRoot.AddSubMenuItem("Start session", "Begin session and start sending metrics")
+	tray.startSession = sessionRoot.AddSubMenuItem(
+		"Start session",
+		"Uses session.default_game_name from config (can be empty). Set name in the web dashboard anytime.",
+	)
+	tray.startSessionWithName = sessionRoot.AddSubMenuItem(
+		"Start session (enter name)…",
+		"Optional: type game name now, or leave empty and edit in the dashboard.",
+	)
 	tray.endSession = sessionRoot.AddSubMenuItem("End session", "End current session")
 
 	labelsRoot := systray.AddMenuItem("Activity labels", "Mark intervals for ML (one open at a time)")
@@ -188,21 +193,25 @@ func run(ctx context.Context, cancel context.CancelFunc, tray *trayMenu) {
 
 	// ── Tray menu actions ─────────────────────────────────────────────────────
 	listenTrayClick(ctx, tray.startSession, func() {
-		defaultName := lastSessionGameName
-		if defaultName == "" {
-			defaultName = cfg.Session.DefaultGameName
+		name := strings.TrimSpace(cfg.Session.DefaultGameName)
+		if err := apiClient.StartSession(ctx, name); err != nil {
+			log.Printf("start session: %v", err)
+		} else {
+			log.Printf("session started (game_name=%q — edit in dashboard if needed)", name)
+			tray.status.SetTitle("Status: gaming")
 		}
-		name, ok, err := dlgs.Entry("Game Activity Monitor", "Game name (compared to window title in exported CSV):", defaultName)
+	})
+	listenTrayClick(ctx, tray.startSessionWithName, func() {
+		def := strings.TrimSpace(cfg.Session.DefaultGameName)
+		name, ok, err := trayprompt.GameName(ctx, def)
 		if err != nil {
-			log.Printf("game name dialog: %v — using session.default_game_name from config", err)
-			name = cfg.Session.DefaultGameName
-			ok = true
+			log.Printf("optional game name dialog: %v", err)
+			return
 		}
 		if !ok {
 			return
 		}
 		name = strings.TrimSpace(name)
-		lastSessionGameName = name
 		if err := apiClient.StartSession(ctx, name); err != nil {
 			log.Printf("start session: %v", err)
 		} else {

@@ -7,7 +7,7 @@ auth:
   email: ""
   password: ""
 
-# Prefill / fallback when the OS game-name dialog is unavailable (e.g. headless).
+# Used when you choose Session → Start session (no prompt). Can be empty; set the name in the web dashboard later.
 session:
   default_game_name: ""
 

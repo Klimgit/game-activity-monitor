@@ -16,7 +16,7 @@ type Config struct {
 	Offline    OfflineConfig    `yaml:"offline"`
 }
 
-// SessionConfig affects tray "Start session" (prefill / fallback when the OS dialog is unavailable).
+// SessionConfig: default_game_name is used by tray "Start session" without a dialog; optional "Start session (enter name)" pre-fills from this too.
 type SessionConfig struct {
 	DefaultGameName string `yaml:"default_game_name"`
 }
