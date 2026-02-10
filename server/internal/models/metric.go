@@ -72,6 +72,7 @@ type WindowMetricsData struct {
 	MemAvg                float64   `json:"mem_avg"`
 	GPUUtilAvg            float64   `json:"gpu_util_avg"`
 	GPUTempAvg            float64   `json:"gpu_temp_avg"`
+	GPUMemAvgMB           float64   `json:"gpu_mem_avg_mb"`
 }
 
 type ClickPoint struct {

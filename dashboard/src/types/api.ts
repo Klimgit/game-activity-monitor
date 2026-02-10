@@ -95,6 +95,7 @@ export interface WindowMetricsData {
   mem_avg: number
   gpu_util_avg: number
   gpu_temp_avg: number
+  gpu_mem_avg_mb: number
 }
 
 /** ML ground-truth interval (FSM: non-overlapping per session). */

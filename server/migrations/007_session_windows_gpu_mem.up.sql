@@ -1,0 +1,2 @@
+ALTER TABLE session_windows
+    ADD COLUMN IF NOT EXISTS gpu_mem_avg_mb FLOAT NOT NULL DEFAULT 0;

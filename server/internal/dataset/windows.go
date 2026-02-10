@@ -58,12 +58,15 @@ func WriteDatasetWindowsCSV(ctx context.Context, w io.Writer, st storage.Storage
 	}
 
 	cw := csv.NewWriter(w)
+	// Column order matches session_windows feature columns (then label), for parity with DB exports.
 	header := []string{
-		"user_id", "session_id", "window_index", "window_start", "window_end", "duration_s",
-		"mouse_moves", "mouse_clicks", "speed_avg", "speed_max", "cursor_accel_avg", "cursor_accel_max",
-		"keystrokes", "key_hold_avg_ms",
+		"user_id", "session_id", "window_index", "window_start", "window_end",
+		"duration_s", "mouse_moves", "mouse_clicks", "speed_avg", "speed_max",
+		"keystrokes", "key_hold_avg_ms", "active_process",
+		"cpu_avg", "cpu_max", "mem_avg", "gpu_util_avg", "gpu_temp_avg",
 		"key_press_interval_avg_ms", "key_w", "key_a", "key_s", "key_d",
-		"active_process", "foreground_window_title", "cpu_avg", "cpu_max", "mem_avg", "gpu_util_avg", "gpu_temp_avg", "label",
+		"cursor_accel_avg", "cursor_accel_max", "foreground_window_title",
+		"gpu_mem_avg_mb", "label",
 	}
 	if includeHeader {
 		if err := cw.Write(header); err != nil {
@@ -97,22 +100,23 @@ func WriteDatasetWindowsCSV(ctx context.Context, w io.Writer, st storage.Storage
 			strconv.Itoa(r.MouseClicks),
 			strconv.FormatFloat(r.SpeedAvg, 'f', 6, 64),
 			strconv.FormatFloat(r.SpeedMax, 'f', 6, 64),
-			strconv.FormatFloat(r.CursorAccelAvg, 'f', 6, 64),
-			strconv.FormatFloat(r.CursorAccelMax, 'f', 6, 64),
 			strconv.Itoa(r.Keystrokes),
 			strconv.FormatFloat(r.KeyHoldAvgMs, 'f', 4, 64),
-			strconv.FormatFloat(r.KeyPressIntervalAvgMs, 'f', 4, 64),
-			strconv.Itoa(r.KeyW),
-			strconv.Itoa(r.KeyA),
-			strconv.Itoa(r.KeyS),
-			strconv.Itoa(r.KeyD),
 			r.ActiveProcess,
-			r.ForegroundWindowTitle,
 			strconv.FormatFloat(r.CPUAvg, 'f', 4, 64),
 			strconv.FormatFloat(r.CPUMax, 'f', 4, 64),
 			strconv.FormatFloat(r.MemAvg, 'f', 4, 64),
 			strconv.FormatFloat(r.GPUUtilAvg, 'f', 4, 64),
 			strconv.FormatFloat(r.GPUTempAvg, 'f', 4, 64),
+			strconv.FormatFloat(r.KeyPressIntervalAvgMs, 'f', 4, 64),
+			strconv.Itoa(r.KeyW),
+			strconv.Itoa(r.KeyA),
+			strconv.Itoa(r.KeyS),
+			strconv.Itoa(r.KeyD),
+			strconv.FormatFloat(r.CursorAccelAvg, 'f', 6, 64),
+			strconv.FormatFloat(r.CursorAccelMax, 'f', 6, 64),
+			r.ForegroundWindowTitle,
+			strconv.FormatFloat(r.GPUMemAvgMB, 'f', 4, 64),
 			lbl,
 		}
 		if err := cw.Write(row); err != nil {
