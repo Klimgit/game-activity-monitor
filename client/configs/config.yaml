@@ -7,6 +7,10 @@ auth:
   email: ""
   password: ""
 
+# Prefill / fallback when the OS game-name dialog is unavailable (e.g. headless).
+session:
+  default_game_name: ""
+
 collectors:
   intervals:
     system_polling: 2s
