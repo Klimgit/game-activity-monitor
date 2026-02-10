@@ -59,13 +59,16 @@ func main() {
 
 	// ── Wiring ────────────────────────────────────────────────────────────────
 	var pred inference.Predictor
-	if u := strings.TrimSpace(cfg.ML.InferenceURL); u != "" {
-		pred = inference.NewHTTPPredictor(u)
-		log.Printf("ML inference enabled: %s", u)
+	mlURL := strings.TrimSpace(cfg.ML.InferenceURL)
+	if mlURL != "" {
+		pred = inference.NewHTTPPredictor(mlURL)
+		log.Printf("ML inference enabled: %s", mlURL)
+	} else {
+		log.Println("ML inference disabled: set ML_INFERENCE_URL so window_metrics get ml_predicted_state on ingest")
 	}
 	store := storage.NewTimescaleStorage(db, pred)
 	jwtMgr := auth.NewJWTManager(cfg.Auth.JWTSecret, cfg.Auth.TokenDuration)
-	router := serverapi.SetupRouter(store, jwtMgr)
+	router := serverapi.SetupRouter(store, jwtMgr, mlURL != "")
 
 	addr := ":" + cfg.Server.Port
 	srv := &http.Server{
