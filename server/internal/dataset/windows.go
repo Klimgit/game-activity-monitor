@@ -60,12 +60,12 @@ func WriteDatasetWindowsCSV(ctx context.Context, w io.Writer, st storage.Storage
 	cw := csv.NewWriter(w)
 	// Column order matches session_windows feature columns (then label), for parity with DB exports.
 	header := []string{
-		"user_id", "session_id", "window_index", "window_start", "window_end",
+		"user_id", "session_id", "window_index", "window_start", "window_end", "game_name",
 		"duration_s", "mouse_moves", "mouse_clicks", "speed_avg", "speed_max",
 		"keystrokes", "key_hold_avg_ms", "active_process",
 		"cpu_avg", "cpu_max", "mem_avg", "gpu_util_avg", "gpu_temp_avg",
 		"key_press_interval_avg_ms", "key_w", "key_a", "key_s", "key_d",
-		"cursor_accel_avg", "cursor_accel_max", "foreground_window_title",
+		"cursor_accel_avg", "cursor_accel_max", "foreground_window_title", "title_match_score",
 		"gpu_mem_avg_mb", "label",
 	}
 	if includeHeader {
@@ -95,6 +95,7 @@ func WriteDatasetWindowsCSV(ctx context.Context, w io.Writer, st storage.Storage
 			widx,
 			r.WindowStart.UTC().Format(time.RFC3339Nano),
 			r.WindowEnd.UTC().Format(time.RFC3339Nano),
+			r.GameName,
 			strconv.FormatFloat(r.DurationS, 'f', 4, 64),
 			strconv.Itoa(r.MouseMoves),
 			strconv.Itoa(r.MouseClicks),
@@ -116,6 +117,7 @@ func WriteDatasetWindowsCSV(ctx context.Context, w io.Writer, st storage.Storage
 			strconv.FormatFloat(r.CursorAccelAvg, 'f', 6, 64),
 			strconv.FormatFloat(r.CursorAccelMax, 'f', 6, 64),
 			r.ForegroundWindowTitle,
+			TitleMatchScoreCSV(r.GameName, r.ForegroundWindowTitle),
 			strconv.FormatFloat(r.GPUMemAvgMB, 'f', 4, 64),
 			lbl,
 		}

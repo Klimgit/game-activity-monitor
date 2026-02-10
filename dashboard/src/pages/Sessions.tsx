@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { sessionsApi } from '../api'
 import type { Session, SessionFilters } from '../types/api'
@@ -29,6 +29,84 @@ function StateBadge({ state }: { state: string }) {
     state === 'ended'   ? 'bg-slate-500/20 text-slate-400' :
                           'bg-purple-500/20 text-purple-400'
   return <span className={`badge ${color}`}>{state}</span>
+}
+
+function GameNameCell({ session }: { session: Session }) {
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(session.game_name)
+
+  useEffect(() => {
+    if (!editing) setDraft(session.game_name)
+  }, [session.game_name, session.id, editing])
+
+  const mut = useMutation({
+    mutationFn: (game_name: string) => sessionsApi.patch(session.id, { game_name }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sessions'] })
+      setEditing(false)
+    },
+  })
+
+  if (editing) {
+    return (
+      <td className="px-4 py-3 align-top">
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            className="input text-sm py-1 max-w-[220px]"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setEditing(false)
+                setDraft(session.game_name)
+              }
+              if (e.key === 'Enter') mut.mutate(draft.trim())
+            }}
+            autoFocus
+          />
+          <button
+            type="button"
+            className="btn-primary text-xs py-1 px-2"
+            disabled={mut.isPending}
+            onClick={() => mut.mutate(draft.trim())}
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            className="btn-secondary text-xs py-1 px-2"
+            disabled={mut.isPending}
+            onClick={() => {
+              setEditing(false)
+              setDraft(session.game_name)
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+        {mut.isError && (
+          <p className="text-red-400 text-xs mt-1">Could not save — try again.</p>
+        )}
+      </td>
+    )
+  }
+
+  return (
+    <td className="px-4 py-3 text-slate-200 font-medium">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span>{session.game_name || <span className="text-slate-500 italic">unknown</span>}</span>
+        <button
+          type="button"
+          className="text-xs text-sky-400 hover:text-sky-300 underline-offset-2 hover:underline"
+          onClick={() => setEditing(true)}
+        >
+          Edit
+        </button>
+      </div>
+    </td>
+  )
 }
 
 export default function Sessions() {
@@ -142,9 +220,7 @@ export default function Sessions() {
                     <td className="px-4 py-3 text-slate-300 whitespace-nowrap">
                       {format(parseISO(s.session_start), 'dd MMM yyyy')}
                     </td>
-                    <td className="px-4 py-3 text-slate-200 font-medium">
-                      {s.game_name || <span className="text-slate-500 italic">unknown</span>}
-                    </td>
+                    <GameNameCell session={s} />
                     <td className="px-4 py-3 text-slate-300 whitespace-nowrap">
                       {format(parseISO(s.session_start), 'HH:mm:ss')}
                     </td>

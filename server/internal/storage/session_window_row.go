@@ -33,4 +33,6 @@ type SessionWindowRow struct {
 	CursorAccelAvg        float64
 	CursorAccelMax        float64
 	ForegroundWindowTitle string
+	// GameName comes from activity_sessions (JOIN); empty if session row missing.
+	GameName string
 }

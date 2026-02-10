@@ -65,6 +65,12 @@ export const sessionsApi = {
     const { data } = await client.post<Session>(`/sessions/${id}/end`, payload)
     return data
   },
+
+  /** Updates session metadata (e.g. game_name for ML / dataset join). */
+  patch: async (id: number, body: { game_name: string }): Promise<Session> => {
+    const { data } = await client.patch<Session>(`/sessions/${id}`, body)
+    return data
+  },
 }
 
 // ── Activity intervals (ML) ─────────────────────────────────────────────────

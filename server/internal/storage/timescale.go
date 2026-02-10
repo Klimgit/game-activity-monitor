@@ -256,6 +256,27 @@ func (ts *TimescaleStorage) UpdateSession(ctx context.Context, s *models.Session
 	return nil
 }
 
+func (ts *TimescaleStorage) UpdateSessionGameName(ctx context.Context, sessionID, userID int64, gameName string) (*models.Session, error) {
+	res, err := ts.db.ExecContext(ctx, `
+		UPDATE activity_sessions
+		SET    game_name = $1,
+		       updated_at = NOW()
+		WHERE  id = $2 AND user_id = $3`,
+		gameName, sessionID, userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("storage.UpdateSessionGameName: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("storage.UpdateSessionGameName rows affected: %w", err)
+	}
+	if n == 0 {
+		return nil, nil
+	}
+	return ts.GetSessionByID(ctx, sessionID, userID)
+}
+
 func (ts *TimescaleStorage) GetSessions(ctx context.Context, userID int64, from, to time.Time, game string) ([]*models.Session, error) {
 	query := `
 		SELECT id, user_id, session_start, session_end, game_name,
@@ -426,20 +447,22 @@ func (ts *TimescaleStorage) ListActivityIntervals(ctx context.Context, userID in
 
 func (ts *TimescaleStorage) SessionWindowsForUser(ctx context.Context, userID int64, from, to time.Time, sessionID *int64) ([]SessionWindowRow, error) {
 	q := `
-		SELECT time, user_id, session_id, window_start, window_end, duration_s,
-		       mouse_moves, mouse_clicks, speed_avg, speed_max,
-		       keystrokes, key_hold_avg_ms, key_press_interval_avg_ms, key_w, key_a, key_s, key_d, active_process,
-		       cpu_avg, cpu_max, mem_avg, gpu_util_avg, gpu_temp_avg, gpu_mem_avg_mb,
-		       cursor_accel_avg, cursor_accel_max, foreground_window_title
-		FROM   session_windows
-		WHERE  user_id = $1
-		  AND window_end >= $2 AND window_start <= $3`
+		SELECT sw.time, sw.user_id, sw.session_id, sw.window_start, sw.window_end, sw.duration_s,
+		       sw.mouse_moves, sw.mouse_clicks, sw.speed_avg, sw.speed_max,
+		       sw.keystrokes, sw.key_hold_avg_ms, sw.key_press_interval_avg_ms, sw.key_w, sw.key_a, sw.key_s, sw.key_d, sw.active_process,
+		       sw.cpu_avg, sw.cpu_max, sw.mem_avg, sw.gpu_util_avg, sw.gpu_temp_avg, sw.gpu_mem_avg_mb,
+		       sw.cursor_accel_avg, sw.cursor_accel_max, sw.foreground_window_title,
+		       COALESCE(s.game_name, '') AS game_name
+		FROM   session_windows sw
+		LEFT JOIN activity_sessions s ON s.id = sw.session_id
+		WHERE  sw.user_id = $1
+		  AND sw.window_end >= $2 AND sw.window_start <= $3`
 	args := []interface{}{userID, from, to}
 	if sessionID != nil {
-		q += " AND session_id = $4"
+		q += " AND sw.session_id = $4"
 		args = append(args, *sessionID)
 	}
-	q += " ORDER BY window_start ASC"
+	q += " ORDER BY sw.window_start ASC"
 
 	rows, err := ts.db.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -456,6 +479,7 @@ func (ts *TimescaleStorage) SessionWindowsForUser(ctx context.Context, userID in
 			&r.Keystrokes, &r.KeyHoldAvgMs, &r.KeyPressIntervalAvgMs, &r.KeyW, &r.KeyA, &r.KeyS, &r.KeyD, &r.ActiveProcess,
 			&r.CPUAvg, &r.CPUMax, &r.MemAvg, &r.GPUUtilAvg, &r.GPUTempAvg, &r.GPUMemAvgMB,
 			&r.CursorAccelAvg, &r.CursorAccelMax, &r.ForegroundWindowTitle,
+			&r.GameName,
 		); err != nil {
 			return nil, err
 		}

@@ -49,6 +49,7 @@ func SetupRouter(store storage.Storage, jwtMgr *auth.JWTManager) *gin.Engine {
 		sessions.POST("/start", handlers.StartSession(deps))
 		sessions.POST("/:id/end", handlers.EndSession(deps))
 		sessions.GET("", handlers.GetSessions(deps))
+		sessions.PATCH("/:id", handlers.PatchSession(deps))
 		sessions.GET("/:id", handlers.GetSession(deps))
 	}
 

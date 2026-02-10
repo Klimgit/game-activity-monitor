@@ -11,8 +11,14 @@ import (
 type Config struct {
 	Server     ServerConfig     `yaml:"server"`
 	Auth       AuthConfig       `yaml:"auth"`
+	Session    SessionConfig    `yaml:"session"`
 	Collectors CollectorsConfig `yaml:"collectors"`
 	Offline    OfflineConfig    `yaml:"offline"`
+}
+
+// SessionConfig affects tray "Start session" (prefill / fallback when the OS dialog is unavailable).
+type SessionConfig struct {
+	DefaultGameName string `yaml:"default_game_name"`
 }
 
 type ServerConfig struct {
