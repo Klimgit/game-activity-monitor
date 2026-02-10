@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -14,6 +15,7 @@ import (
 	serverapi "game-activity-monitor/server/internal/api"
 	"game-activity-monitor/server/internal/auth"
 	"game-activity-monitor/server/internal/config"
+	"game-activity-monitor/server/internal/inference"
 	"game-activity-monitor/server/internal/storage"
 	mig "game-activity-monitor/server/migrations"
 )
@@ -35,7 +37,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("open db: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if cerr := db.Close(); cerr != nil {
+			log.Printf("close database: %v", cerr)
+		}
+	}()
 
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(10)
@@ -52,7 +58,12 @@ func main() {
 	log.Println("migrations applied")
 
 	// ── Wiring ────────────────────────────────────────────────────────────────
-	store := storage.NewTimescaleStorage(db)
+	var pred inference.Predictor
+	if u := strings.TrimSpace(cfg.ML.InferenceURL); u != "" {
+		pred = inference.NewHTTPPredictor(u)
+		log.Printf("ML inference enabled: %s", u)
+	}
+	store := storage.NewTimescaleStorage(db, pred)
 	jwtMgr := auth.NewJWTManager(cfg.Auth.JWTSecret, cfg.Auth.TokenDuration)
 	router := serverapi.SetupRouter(store, jwtMgr)
 
@@ -80,7 +91,15 @@ func runMigrations(dbURL string) error {
 	if err != nil {
 		return err
 	}
-	defer m.Close()
+	defer func() {
+		srcErr, dbErr := m.Close()
+		if srcErr != nil {
+			log.Printf("migrate close source: %v", srcErr)
+		}
+		if dbErr != nil {
+			log.Printf("migrate close database: %v", dbErr)
+		}
+	}()
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return err
 	}

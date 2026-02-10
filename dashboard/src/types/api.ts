@@ -23,6 +23,8 @@ export interface Session {
   state: string
   created_at: string
   updated_at: string
+  /** Seconds per classifier label from session_windows (ML). */
+  ml_playtime_seconds?: Record<string, number>
 }
 
 export type EventType =
@@ -96,6 +98,17 @@ export interface WindowMetricsData {
   gpu_util_avg: number
   gpu_temp_avg: number
   gpu_mem_avg_mb: number
+  /** Set by API when enriching /metrics/recent from session_windows. */
+  ml_predicted_state?: string
+}
+
+/** Aggregates from GET /metrics/windows-summary. */
+export interface WindowMetricsSummary {
+  ml_playtime_seconds: Record<string, number>
+  window_count: number
+  total_duration_s: number
+  total_mouse_moves: number
+  total_keystrokes: number
 }
 
 /** ML ground-truth interval (FSM: non-overlapping per session). */

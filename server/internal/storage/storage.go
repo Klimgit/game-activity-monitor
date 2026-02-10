@@ -34,6 +34,12 @@ type Storage interface {
 	SessionWindowsForUser(ctx context.Context, userID int64, from, to time.Time, sessionID *int64) ([]SessionWindowRow, error)
 	// PlaytimeByState sums interval lengths per state for the user in [from, to].
 	PlaytimeByState(ctx context.Context, userID int64, from, to time.Time, sessionID *int64) (map[string]int64, error)
+	// MLPlaytimeBySessionIDs sums session_windows.duration_s by ml_predicted_state per session (inference labels).
+	MLPlaytimeBySessionIDs(ctx context.Context, userID int64, sessionIDs []int64) (map[int64]map[string]int64, error)
+	// WindowMetricsSummary aggregates session_windows in the time range (overlap with [from, to]).
+	WindowMetricsSummary(ctx context.Context, userID int64, from, to time.Time) (*WindowMetricsSummary, error)
+	// WindowMLStates returns ml_predicted_state for matching (time, session_id) rows.
+	WindowMLStates(ctx context.Context, userID int64, keys []WindowKey) (map[WindowKey]string, error)
 
 	// --- Heatmap ---
 	GetHeatmapData(ctx context.Context, sessionID, userID int64) ([]models.ClickPoint, error)

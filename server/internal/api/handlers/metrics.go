@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"game-activity-monitor/server/internal/models"
+	"game-activity-monitor/server/internal/storage"
 )
 
 func validatedSessionIDs(c *gin.Context, deps *Dependencies, uid int64, events []*models.RawEvent) map[int64]bool {
@@ -104,6 +106,76 @@ func GetRecentMetrics(deps *Dependencies) gin.HandlerFunc {
 			events = []*models.RawEvent{}
 		}
 
+		var keys []storage.WindowKey
+		for _, e := range events {
+			if e == nil || e.EventType != models.EventWindowMetrics || e.SessionID == nil {
+				continue
+			}
+			keys = append(keys, storage.WindowKey{
+				Time:      storage.NormalizeWindowTime(e.Timestamp),
+				SessionID: *e.SessionID,
+			})
+		}
+		if len(keys) > 0 {
+			states, err := deps.Storage.WindowMLStates(c.Request.Context(), uid, keys)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load ml states"})
+				return
+			}
+			for _, e := range events {
+				if e == nil || e.EventType != models.EventWindowMetrics || e.SessionID == nil {
+					continue
+				}
+				k := storage.WindowKey{Time: storage.NormalizeWindowTime(e.Timestamp), SessionID: *e.SessionID}
+				st, ok := states[k]
+				if !ok {
+					continue
+				}
+				var m map[string]interface{}
+				if err := json.Unmarshal(e.Data, &m); err != nil || m == nil {
+					m = map[string]interface{}{}
+				}
+				m["ml_predicted_state"] = st
+				raw, err := json.Marshal(m)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to enrich events"})
+					return
+				}
+				e.Data = raw
+			}
+		}
+
 		c.JSON(http.StatusOK, events)
+	}
+}
+
+func GetWindowMetricsSummary(deps *Dependencies) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid := c.GetInt64("user_id")
+
+		fromStr := c.Query("from")
+		toStr := c.Query("to")
+		if fromStr == "" || toStr == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "from and to are required (YYYY-MM-DD)"})
+			return
+		}
+		from, err := time.ParseInLocation("2006-01-02", fromStr, time.UTC)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid from date (use YYYY-MM-DD)"})
+			return
+		}
+		toDay, err := time.ParseInLocation("2006-01-02", toStr, time.UTC)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid to date (use YYYY-MM-DD)"})
+			return
+		}
+		to := toDay.Add(24*time.Hour - time.Nanosecond)
+
+		summary, err := deps.Storage.WindowMetricsSummary(c.Request.Context(), uid, from, to)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load window summary"})
+			return
+		}
+		c.JSON(http.StatusOK, summary)
 	}
 }

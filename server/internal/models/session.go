@@ -15,6 +15,8 @@ type Session struct {
 	State          string     `json:"state"           db:"state"`
 	CreatedAt      time.Time  `json:"created_at"      db:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"      db:"updated_at"`
+	// MLPlaytimeSeconds sums session_windows.duration_s by ml_predicted_state (inference).
+	MLPlaytimeSeconds map[string]int64 `json:"ml_playtime_seconds,omitempty"`
 }
 
 type ActivityInterval struct {

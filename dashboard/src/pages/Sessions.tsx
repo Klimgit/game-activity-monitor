@@ -12,6 +12,11 @@ function fmtDuration(sec: number) {
   return `${m}m ${sec % 60}s`
 }
 
+function mlSec(m: Record<string, number> | undefined, key: string) {
+  if (!m) return 0
+  return Math.round(m[key] ?? 0)
+}
+
 function ActivityBadge({ score }: { score: number }) {
   const pct = Math.round(score * 100)
   const color =
@@ -126,6 +131,10 @@ export default function Sessions() {
 
   const totalActiveTime = sessions.reduce((s: number, sess: Session) => s + sess.active_duration, 0)
   const totalTime = sessions.reduce((s: number, sess: Session) => s + sess.total_duration, 0)
+  const totalMlActive = sessions.reduce(
+    (s: number, sess: Session) => s + mlSec(sess.ml_playtime_seconds, 'active_gameplay'),
+    0,
+  )
 
   return (
     <div className="space-y-6">
@@ -176,18 +185,22 @@ export default function Sessions() {
 
       {/* ── Summary ──────────────────────────────────────────────────────── */}
       {sessions.length > 0 && (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="card text-center">
             <p className="text-2xl font-bold text-white">{sessions.length}</p>
             <p className="text-xs text-slate-400 mt-1">Sessions</p>
           </div>
           <div className="card text-center">
             <p className="text-2xl font-bold text-white">{fmtDuration(totalTime)}</p>
-            <p className="text-xs text-slate-400 mt-1">Total time</p>
+            <p className="text-xs text-slate-400 mt-1">Total time (client)</p>
           </div>
           <div className="card text-center">
             <p className="text-2xl font-bold text-green-400">{fmtDuration(totalActiveTime)}</p>
-            <p className="text-xs text-slate-400 mt-1">Active time</p>
+            <p className="text-xs text-slate-400 mt-1">Active (client)</p>
+          </div>
+          <div className="card text-center">
+            <p className="text-2xl font-bold text-emerald-300">{fmtDuration(totalMlActive)}</p>
+            <p className="text-xs text-slate-400 mt-1">Active gameplay (ML)</p>
           </div>
         </div>
       )}
@@ -205,13 +218,27 @@ export default function Sessions() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-700 text-left">
-                  {['Date', 'Game', 'Start', 'Duration', 'Active', 'AFK', 'Activity', 'State'].map(
-                    (h) => (
-                      <th key={h} className="px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">
-                        {h}
-                      </th>
-                    ),
-                  )}
+                  {[
+                    'Date',
+                    'Game',
+                    'Start',
+                    'Duration',
+                    'Active',
+                    'AFK',
+                    'ML play',
+                    'ML afk',
+                    'ML menu',
+                    'ML load',
+                    'Activity',
+                    'State',
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide"
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-700/50">
@@ -227,6 +254,18 @@ export default function Sessions() {
                     <td className="px-4 py-3 text-slate-300">{fmtDuration(s.total_duration)}</td>
                     <td className="px-4 py-3 text-green-400">{fmtDuration(s.active_duration)}</td>
                     <td className="px-4 py-3 text-yellow-400">{fmtDuration(s.afk_duration)}</td>
+                    <td className="px-4 py-3 text-emerald-400 text-xs whitespace-nowrap">
+                      {fmtDuration(mlSec(s.ml_playtime_seconds, 'active_gameplay'))}
+                    </td>
+                    <td className="px-4 py-3 text-amber-400/90 text-xs whitespace-nowrap">
+                      {fmtDuration(mlSec(s.ml_playtime_seconds, 'afk'))}
+                    </td>
+                    <td className="px-4 py-3 text-sky-400/90 text-xs whitespace-nowrap">
+                      {fmtDuration(mlSec(s.ml_playtime_seconds, 'menu'))}
+                    </td>
+                    <td className="px-4 py-3 text-violet-400/90 text-xs whitespace-nowrap">
+                      {fmtDuration(mlSec(s.ml_playtime_seconds, 'loading'))}
+                    </td>
                     <td className="px-4 py-3">
                       <ActivityBadge score={s.activity_score} />
                     </td>

@@ -42,6 +42,7 @@ func SetupRouter(store storage.Storage, jwtMgr *auth.JWTManager) *gin.Engine {
 	{
 		metrics.POST("/batch", handlers.ReceiveMetricsBatch(deps))
 		metrics.GET("/recent", handlers.GetRecentMetrics(deps))
+		metrics.GET("/windows-summary", handlers.GetWindowMetricsSummary(deps))
 	}
 
 	sessions := protected.Group("/sessions")

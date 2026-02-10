@@ -9,17 +9,19 @@ import (
 	"log"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 
+	"game-activity-monitor/server/internal/inference"
 	"game-activity-monitor/server/internal/models"
 )
 
 type TimescaleStorage struct {
-	db *sql.DB
+	db        *sql.DB
+	predictor inference.Predictor
 }
 
-func NewTimescaleStorage(db *sql.DB) *TimescaleStorage {
-	return &TimescaleStorage{db: db}
+func NewTimescaleStorage(db *sql.DB, predictor inference.Predictor) *TimescaleStorage {
+	return &TimescaleStorage{db: db, predictor: predictor}
 }
 
 func (ts *TimescaleStorage) Ping(ctx context.Context) error {
@@ -83,6 +85,60 @@ func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*model
 		return nil
 	}
 
+	type winItem struct {
+		sessionID *int64
+		w         models.WindowMetricsData
+	}
+	var winItems []winItem
+	for _, e := range events {
+		if e == nil || e.EventType != models.EventWindowMetrics {
+			continue
+		}
+		var w models.WindowMetricsData
+		if err := json.Unmarshal(e.Data, &w); err != nil {
+			continue
+		}
+		winItems = append(winItems, winItem{sessionID: e.SessionID, w: w})
+	}
+
+	var preds []string
+	if len(winItems) > 0 && ts.predictor != nil {
+		seen := make(map[int64]struct{})
+		var sids []int64
+		for _, it := range winItems {
+			if it.sessionID == nil {
+				continue
+			}
+			if _, ok := seen[*it.sessionID]; ok {
+				continue
+			}
+			seen[*it.sessionID] = struct{}{}
+			sids = append(sids, *it.sessionID)
+		}
+		games, err := ts.gameNamesBySessionID(ctx, sids)
+		if err != nil {
+			return fmt.Errorf("storage.SaveEventsBatch game names: %w", err)
+		}
+		features := make([]map[string]interface{}, 0, len(winItems))
+		for _, it := range winItems {
+			gn := ""
+			if it.sessionID != nil {
+				gn = games[*it.sessionID]
+			}
+			features = append(features, inference.WindowFeatureRow(&it.w, gn))
+		}
+		preds, err = ts.predictor.PredictBatch(ctx, features)
+		if err != nil {
+			log.Printf("storage.SaveEventsBatch: ml predict: %v", err)
+			preds = make([]string, len(winItems))
+		}
+		if len(preds) != len(winItems) {
+			preds = make([]string, len(winItems))
+		}
+	} else if len(winItems) > 0 {
+		preds = make([]string, len(winItems))
+	}
+
 	tx, err := ts.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("storage.SaveEventsBatch begin: %w", err)
@@ -111,14 +167,18 @@ func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*model
 		     mouse_moves, mouse_clicks, speed_avg, speed_max,
 		     keystrokes, key_hold_avg_ms, key_press_interval_avg_ms, key_w, key_a, key_s, key_d, active_process,
 		     cpu_avg, cpu_max, mem_avg, gpu_util_avg, gpu_temp_avg, gpu_mem_avg_mb,
-		     cursor_accel_avg, cursor_accel_max, foreground_window_title)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`)
+		     cursor_accel_avg, cursor_accel_max, foreground_window_title, ml_predicted_state)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)`)
 	if err != nil {
 		return fmt.Errorf("storage.SaveEventsBatch prepare window: %w", err)
 	}
 	defer closeStmt(winStmt)
 
+	winCursor := 0
 	for _, e := range events {
+		if e == nil {
+			continue
+		}
 		dataJSON, err := json.Marshal(e.Data)
 		if err != nil {
 			return fmt.Errorf("storage.SaveEventsBatch marshal: %w", err)
@@ -147,23 +207,56 @@ func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*model
 		// Mirror window_metrics events into session_windows for ML training.
 		if e.EventType == models.EventWindowMetrics {
 			var w models.WindowMetricsData
-			if err := json.Unmarshal(e.Data, &w); err == nil {
-				if _, err := winStmt.ExecContext(ctx,
-					e.Timestamp, e.UserID, sessionID,
-					w.WindowStart, w.WindowEnd, w.DurationS,
-					w.MouseMoves, w.MouseClicks, w.SpeedAvg, w.SpeedMax,
-					w.Keystrokes, w.KeyHoldAvgMs,
-					w.KeyPressIntervalAvgMs, w.KeyW, w.KeyA, w.KeyS, w.KeyD, w.ActiveProcess,
-					w.CPUAvg, w.CPUMax, w.MemAvg, w.GPUUtilAvg, w.GPUTempAvg, w.GPUMemAvgMB,
-					w.CursorAccelAvg, w.CursorAccelMax, w.ForegroundWindowTitle,
-				); err != nil {
-					return fmt.Errorf("storage.SaveEventsBatch exec window: %w", err)
+			if err := json.Unmarshal(e.Data, &w); err != nil {
+				continue
+			}
+			ml := sql.NullString{}
+			if winCursor < len(preds) {
+				if p := preds[winCursor]; p != "" {
+					ml = sql.NullString{String: p, Valid: true}
 				}
+			}
+			winCursor++
+			if _, err := winStmt.ExecContext(ctx,
+				NormalizeWindowTime(e.Timestamp), e.UserID, sessionID,
+				w.WindowStart, w.WindowEnd, w.DurationS,
+				w.MouseMoves, w.MouseClicks, w.SpeedAvg, w.SpeedMax,
+				w.Keystrokes, w.KeyHoldAvgMs,
+				w.KeyPressIntervalAvgMs, w.KeyW, w.KeyA, w.KeyS, w.KeyD, w.ActiveProcess,
+				w.CPUAvg, w.CPUMax, w.MemAvg, w.GPUUtilAvg, w.GPUTempAvg, w.GPUMemAvgMB,
+				w.CursorAccelAvg, w.CursorAccelMax, w.ForegroundWindowTitle,
+				ml,
+			); err != nil {
+				return fmt.Errorf("storage.SaveEventsBatch exec window: %w", err)
 			}
 		}
 	}
 
 	return tx.Commit()
+}
+
+func (ts *TimescaleStorage) gameNamesBySessionID(ctx context.Context, ids []int64) (map[int64]string, error) {
+	out := make(map[int64]string)
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := ts.db.QueryContext(ctx, `
+		SELECT id, COALESCE(game_name, '')
+		FROM activity_sessions
+		WHERE id = ANY($1)`, pq.Array(ids))
+	if err != nil {
+		return nil, fmt.Errorf("storage.gameNamesBySessionID: %w", err)
+	}
+	defer closeRows(rows)
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		out[id] = name
+	}
+	return out, rows.Err()
 }
 
 func (ts *TimescaleStorage) GetRecentEvents(ctx context.Context, userID int64, since time.Time) ([]*models.RawEvent, error) {
@@ -524,6 +617,132 @@ func (ts *TimescaleStorage) PlaytimeByState(ctx context.Context, userID int64, f
 			return nil, err
 		}
 		out[state] = sec
+	}
+	return out, rows.Err()
+}
+
+func (ts *TimescaleStorage) MLPlaytimeBySessionIDs(ctx context.Context, userID int64, sessionIDs []int64) (map[int64]map[string]int64, error) {
+	out := make(map[int64]map[string]int64)
+	if len(sessionIDs) == 0 {
+		return out, nil
+	}
+	rows, err := ts.db.QueryContext(ctx, `
+		SELECT session_id, ml_predicted_state,
+		       COALESCE(SUM(duration_s), 0)::bigint
+		FROM session_windows
+		WHERE user_id = $1
+		  AND session_id = ANY($2)
+		  AND ml_predicted_state IS NOT NULL
+		  AND ml_predicted_state <> ''
+		GROUP BY session_id, ml_predicted_state`,
+		userID, pq.Array(sessionIDs),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("storage.MLPlaytimeBySessionIDs: %w", err)
+	}
+	defer closeRows(rows)
+	for rows.Next() {
+		var sid int64
+		var st string
+		var sec int64
+		if err := rows.Scan(&sid, &st, &sec); err != nil {
+			return nil, err
+		}
+		if out[sid] == nil {
+			out[sid] = make(map[string]int64)
+		}
+		out[sid][st] = sec
+	}
+	return out, rows.Err()
+}
+
+func (ts *TimescaleStorage) WindowMetricsSummary(ctx context.Context, userID int64, from, to time.Time) (*WindowMetricsSummary, error) {
+	var summary WindowMetricsSummary
+	summary.MLPlaytimeSeconds = map[string]int64{
+		"active_gameplay": 0,
+		"afk":             0,
+		"menu":            0,
+		"loading":         0,
+	}
+
+	err := ts.db.QueryRowContext(ctx, `
+		SELECT COALESCE(COUNT(*), 0)::bigint,
+		       COALESCE(SUM(duration_s), 0)::double precision,
+		       COALESCE(SUM(mouse_moves), 0)::bigint,
+		       COALESCE(SUM(keystrokes), 0)::bigint
+		FROM session_windows
+		WHERE user_id = $1
+		  AND window_end >= $2 AND window_start <= $3`,
+		userID, from, to,
+	).Scan(&summary.WindowCount, &summary.TotalDurationS, &summary.TotalMouseMoves, &summary.TotalKeystrokes)
+	if err != nil {
+		return nil, fmt.Errorf("storage.WindowMetricsSummary totals: %w", err)
+	}
+
+	rows, err := ts.db.QueryContext(ctx, `
+		SELECT ml_predicted_state, COALESCE(SUM(duration_s), 0)::bigint
+		FROM session_windows
+		WHERE user_id = $1
+		  AND window_end >= $2 AND window_start <= $3
+		  AND ml_predicted_state IS NOT NULL
+		  AND ml_predicted_state <> ''
+		GROUP BY ml_predicted_state`,
+		userID, from, to,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("storage.WindowMetricsSummary by state: %w", err)
+	}
+	defer closeRows(rows)
+	for rows.Next() {
+		var st string
+		var sec int64
+		if err := rows.Scan(&st, &sec); err != nil {
+			return nil, err
+		}
+		summary.MLPlaytimeSeconds[st] = sec
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return &summary, nil
+}
+
+func (ts *TimescaleStorage) WindowMLStates(ctx context.Context, userID int64, keys []WindowKey) (map[WindowKey]string, error) {
+	out := make(map[WindowKey]string)
+	if len(keys) == 0 {
+		return out, nil
+	}
+	times := make([]time.Time, len(keys))
+	sids := make([]int64, len(keys))
+	for i, k := range keys {
+		times[i] = k.Time
+		sids[i] = k.SessionID
+	}
+	rows, err := ts.db.QueryContext(ctx, `
+		SELECT sw.time, sw.session_id, sw.ml_predicted_state
+		FROM session_windows sw
+		INNER JOIN (
+			SELECT unnest($1::timestamptz[]) AS time,
+			       unnest($2::bigint[]) AS session_id
+		) AS q ON sw.time = q.time AND sw.session_id = q.session_id
+		WHERE sw.user_id = $3`,
+		pq.Array(times), pq.Array(sids), userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("storage.WindowMLStates: %w", err)
+	}
+	defer closeRows(rows)
+	for rows.Next() {
+		var t time.Time
+		var sid int64
+		var ml sql.NullString
+		if err := rows.Scan(&t, &sid, &ml); err != nil {
+			return nil, err
+		}
+		k := WindowKey{Time: NormalizeWindowTime(t), SessionID: sid}
+		if ml.Valid && ml.String != "" {
+			out[k] = ml.String
+		}
 	}
 	return out, rows.Err()
 }
