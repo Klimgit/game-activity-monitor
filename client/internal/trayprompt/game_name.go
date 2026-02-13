@@ -1,5 +1,3 @@
-// Package trayprompt asks for the session game name in a separate process so the systray
-// UI thread is not blocked by in-process dialogs (dlgs/GTK on Linux, COM/GDI on Windows).
 package trayprompt
 
 import (
@@ -14,12 +12,10 @@ import (
 const entryTitle = "Game Activity Monitor"
 const entryLabel = "Game name (optional; you can set or edit it in the web dashboard later):"
 
-// psSingleQuoted escapes for PowerShell single-quoted strings (' → ”).
 func psSingleQuoted(s string) string {
 	return strings.ReplaceAll(s, "'", "''")
 }
 
-// GameName shows a modal text entry and returns the trimmed value, ok=false if cancelled.
 func GameName(ctx context.Context, defaultName string) (value string, ok bool, err error) {
 	switch runtime.GOOS {
 	case "linux":
@@ -88,7 +84,6 @@ func powershellExecutable() (string, error) {
 	return "", errors.New("powershell not found in PATH")
 }
 
-// gameNameWindows runs PowerShell in a separate process (STA) with VB InputBox.
 func gameNameWindows(ctx context.Context, defaultName string) (string, bool, error) {
 	psPath, err := powershellExecutable()
 	if err != nil {
@@ -104,7 +99,6 @@ func gameNameWindows(ctx context.Context, defaultName string) (string, bool, err
 
 	prompt := psSingleQuoted(entryLabel)
 	title := psSingleQuoted(entryTitle)
-	// GMS_DEFAULT read inside PowerShell so quoting stays simple.
 	psScript := "Add-Type -AssemblyName Microsoft.VisualBasic; " +
 		"$d = $env:GMS_DEFAULT; " +
 		"if ($null -eq $d) { $d = '' }; " +

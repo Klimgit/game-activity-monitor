@@ -14,7 +14,6 @@ type Config struct {
 }
 
 type MLConfig struct {
-	// InferenceURL is the base URL of the Python classifier service (e.g. http://127.0.0.1:8090). Empty disables ML writes.
 	InferenceURL string
 }
 
@@ -49,9 +48,6 @@ func Load() *Config {
 	}
 }
 
-// mlInferenceURLFromEnv returns the classifier base URL.
-// If ML_INFERENCE_URL is not set at all, defaults to http://127.0.0.1:8090 (local uvicorn).
-// If ML_INFERENCE_URL is set to an empty string (e.g. ML_INFERENCE_URL= in shell or compose), ML is disabled.
 func mlInferenceURLFromEnv() string {
 	v, ok := os.LookupEnv("ML_INFERENCE_URL")
 	if !ok {

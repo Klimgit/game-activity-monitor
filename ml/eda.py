@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""
-Stage 1 — exploratory analysis on the exported window CSV.
-
-Reads the file produced by prepare_dataset.py, prints summary stats and class balance,
-checks GPU columns (if all zeros, do not use them for modelling), and optionally
-writes a text report.
-
-Model training: use colab/train_classifier.ipynb in Colab or Kaggle (no local train script).
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -20,7 +10,6 @@ import pandas as pd
 
 from constants import GPU_COLS, LABEL_COL
 
-# States used in server dataset majorityLabel (for coverage check).
 EXPECTED_LABELS = frozenset({"active_gameplay", "afk", "loading", "menu"})
 
 

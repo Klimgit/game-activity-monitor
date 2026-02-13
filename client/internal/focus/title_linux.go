@@ -10,7 +10,6 @@ import (
 
 const titleMaxChars = 512
 
-// ForegroundWindowTitle returns the active window title on X11 via EWMH (empty on Wayland or if DISPLAY is missing).
 func ForegroundWindowTitle() string {
 	X, err := xgbutil.NewConn()
 	if err != nil {

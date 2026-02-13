@@ -77,8 +77,6 @@ func (a *Aggregator) Run(ctx context.Context) {
 	}
 }
 
-// ─── window accumulator ───────────────────────────────────────────────────────
-
 type windowAccumulator struct {
 	mouseMoves          int
 	mouseClicks         int
@@ -171,9 +169,6 @@ func (w *windowAccumulator) ingest(ev *models.RawEvent) {
 	}
 }
 
-// countWASD increments counters for physical W/A/S/D. Keys from gohook use either a
-// single letter (Keychar) or "key_<code>" when Keychar is unset — e.g. games emit
-// key_17 for W because hook Keycodes match github.com/vcaesar/keycode.
 func countWASD(key string, w, a, s, d *int) {
 	k := strings.TrimSpace(strings.ToLower(key))
 	if len(k) == 1 {

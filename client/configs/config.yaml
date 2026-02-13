@@ -7,7 +7,6 @@ auth:
   email: ""
   password: ""
 
-# Used when you choose Session → Start session (no prompt). Can be empty; set the name in the web dashboard later.
 session:
   default_game_name: ""
 
@@ -18,8 +17,8 @@ collectors:
   enabled:
     - mouse
     - keyboard
-    - system   # merged collector: cpu + memory + active process in one event
-    - gpu      # enables nvidia-smi / sysfs GPU utilization probe (set collectGPU=true)
+    - system
+    - gpu
 
 offline:
   max_queue_size: 50000

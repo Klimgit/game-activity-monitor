@@ -1,5 +1,3 @@
-"""HTTP inference for sklearn window classifier (same feature schema as Colab training)."""
-
 from __future__ import annotations
 
 import json
@@ -18,7 +16,6 @@ TEXT_COLS = ("active_process", "foreground_window_title", "game_name")
 
 
 def _feature_names_from_prep(prep) -> list[str]:
-    """ColumnTransformer.feature_names_in_ is an ndarray; avoid `arr or []` (ambiguous truth value)."""
     raw = getattr(prep, "feature_names_in_", None)
     if raw is None:
         return []

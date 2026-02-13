@@ -7,7 +7,6 @@ import (
 	"game-activity-monitor/server/internal/titlematch"
 )
 
-// WindowFeatureRow builds one training-aligned feature dict (numeric + text columns used in Colab pipeline).
 func WindowFeatureRow(w *models.WindowMetricsData, gameName string) map[string]interface{} {
 	gn := strings.TrimSpace(gameName)
 	tms := titleMatchNumeric(gn, w.ForegroundWindowTitle)

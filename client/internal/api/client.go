@@ -16,34 +16,20 @@ import (
 	"game-activity-monitor/client/internal/storage"
 )
 
-// Client handles authentication and communication with the game-monitor server.
-// Unsent events are buffered briefly in SQLite while offline or between flushes;
-// after a session ends, rows for that session are removed locally (metrics must be on the server).
-//
-// Thread-safety: all exported methods are safe for concurrent use. The fields
-// token, userID, and sessionID are guarded by mu.
 type Client struct {
 	baseURL       string
 	httpClient    *http.Client
 	flushInterval time.Duration
 	store         *storage.LocalStorage
-
-	// mu guards token, userID, and sessionID which are accessed from the
-	// forwardEvents goroutine and the sync worker.
-	mu        sync.Mutex
-	token     string
-	userID    int64
-	sessionID *int64
-
-	// Credentials stored for automatic re-authentication on reconnect.
-	email    string
-	password string
-
-	// Session duration tracking.
-	tracker *session.Tracker
+	mu            sync.Mutex
+	token         string
+	userID        int64
+	sessionID     *int64
+	email         string
+	password      string
+	tracker       *session.Tracker
 }
 
-// NewClient constructs a Client. store must be non-nil.
 func NewClient(baseURL string, flushInterval time.Duration, store *storage.LocalStorage) *Client {
 	return &Client{
 		baseURL:       baseURL,
@@ -54,21 +40,17 @@ func NewClient(baseURL string, flushInterval time.Duration, store *storage.Local
 	}
 }
 
-// UserID returns the ID of the currently authenticated user (0 if not logged in).
 func (c *Client) UserID() int64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.userID
 }
 
-// CurrentSessionID returns the active session ID, or nil when no session is open.
 func (c *Client) CurrentSessionID() *int64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.sessionID
 }
-
-// ─── Authentication ───────────────────────────────────────────────────────────
 
 type loginRequest struct {
 	Email    string `json:"email"`
@@ -83,8 +65,6 @@ type loginResponse struct {
 	} `json:"user"`
 }
 
-// SetCredentials stores the email/password so the sync worker can
-// automatically re-authenticate after a connection loss.
 func (c *Client) SetCredentials(email, password string) {
 	c.mu.Lock()
 	c.email = email
@@ -92,7 +72,6 @@ func (c *Client) SetCredentials(email, password string) {
 	c.mu.Unlock()
 }
 
-// Login authenticates with the server and stores the JWT + user ID.
 func (c *Client) Login(ctx context.Context, email, password string) error {
 	var resp loginResponse
 	if err := c.post(ctx, "/api/v1/auth/login", loginRequest{email, password}, &resp); err != nil {
@@ -105,17 +84,12 @@ func (c *Client) Login(ctx context.Context, email, password string) error {
 	return nil
 }
 
-// ─── Event buffering ──────────────────────────────────────────────────────────
-
-// Enqueue stamps the event with the current user/session IDs, notifies the
-// session activity tracker, and persists the event to the local SQLite buffer.
 func (c *Client) Enqueue(ctx context.Context, e *models.RawEvent) error {
 	c.mu.Lock()
 	e.UserID = c.userID
 	e.SessionID = c.sessionID
 	c.mu.Unlock()
 
-	// Notify the session tracker of user input activity.
 	switch e.EventType {
 	case models.EventMouseMove, models.EventMouseClick,
 		models.EventKeyPress, models.EventKeyRelease:
@@ -125,8 +99,6 @@ func (c *Client) Enqueue(ctx context.Context, e *models.RawEvent) error {
 	return c.store.Save(ctx, e)
 }
 
-// ─── Sessions ─────────────────────────────────────────────────────────────────
-
 type startSessionRequest struct {
 	GameName string `json:"game_name"`
 }
@@ -135,8 +107,6 @@ type sessionResponse struct {
 	ID int64 `json:"id"`
 }
 
-// StartSession opens a new session on the server and starts the duration tracker.
-// Returns an error if a session is already active — call EndSession first.
 func (c *Client) StartSession(ctx context.Context, gameName string) error {
 	c.mu.Lock()
 	if c.sessionID != nil {
@@ -166,13 +136,11 @@ type endSessionRequest struct {
 	ActivityScore  float64 `json:"activity_score"`
 }
 
-// EndSession flushes pending metrics to the server, closes the session on the server,
-// clears the local session ID, and deletes any remaining buffered rows for that session.
 func (c *Client) EndSession(ctx context.Context) error {
 	c.mu.Lock()
 	if c.sessionID == nil {
 		c.mu.Unlock()
-		return nil // no active session
+		return nil
 	}
 	sid := *c.sessionID
 	c.mu.Unlock()
@@ -205,8 +173,6 @@ func (c *Client) EndSession(ctx context.Context) error {
 	return nil
 }
 
-// ─── Activity intervals (ML ground truth) ─────────────────────────────────────
-
 type createIntervalRequest struct {
 	SessionID int64     `json:"session_id"`
 	State     string    `json:"state"`
@@ -214,7 +180,6 @@ type createIntervalRequest struct {
 	EndAt     time.Time `json:"end_at"`
 }
 
-// CreateActivityInterval posts a closed [start_at, end_at] interval for the current session.
 func (c *Client) CreateActivityInterval(ctx context.Context, state string, start, end time.Time) error {
 	c.mu.Lock()
 	sid := c.sessionID
@@ -235,36 +200,26 @@ func (c *Client) CreateActivityInterval(ctx context.Context, state string, start
 	return nil
 }
 
-// ─── Sync worker ──────────────────────────────────────────────────────────────
-
 const syncBatchSize = 1000
 
-// offlineBackoff tracks consecutive flush failures and computes exponential
-// back-off delays so the sync worker does not hammer an unreachable server.
-//
-// Back-off sequence with base=5s: 10s → 20s → 40s → 80s → 160s → 300s (cap).
-// The state is local to StartSyncWorker and therefore needs no mutex.
 type offlineBackoff struct {
 	failures  int
 	nextRetry time.Time
-	offline   bool // true after the 3rd consecutive failure
+	offline   bool
 }
 
 const offlineThreshold = 3
 const maxBackoff = 5 * time.Minute
 
-// ready returns true when a flush attempt should proceed.
 func (b *offlineBackoff) ready() bool {
 	return b.nextRetry.IsZero() || time.Now().After(b.nextRetry)
 }
 
-// recordFailure increments the counter and schedules the next retry using
-// exponential back-off capped at maxBackoff.
 func (b *offlineBackoff) recordFailure(base time.Duration) {
 	b.failures++
 	shift := b.failures - 1
 	if shift > 6 {
-		shift = 6 // 2^6 = 64; base×64 ≥ maxBackoff for any reasonable base
+		shift = 6
 	}
 	delay := base * (1 << uint(shift))
 	if delay > maxBackoff {
@@ -279,8 +234,6 @@ func (b *offlineBackoff) recordFailure(base time.Duration) {
 	}
 }
 
-// recordSuccess resets the back-off state and logs recovery when the client
-// had previously entered offline mode.
 func (b *offlineBackoff) recordSuccess() {
 	if b.offline {
 		log.Printf("sync: server reachable again — leaving offline mode")
@@ -310,14 +263,13 @@ func (c *Client) StartSyncWorker(ctx context.Context) {
 
 		case <-ctx.Done():
 			shutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			c.flush(shutCtx) //nolint:errcheck — best-effort on shutdown
+			c.flush(shutCtx)
 			cancel()
 			return
 		}
 	}
 }
 
-// flushUntilEmpty keeps syncing until the local queue is empty or ctx/deadline expires.
 func (c *Client) flushUntilEmpty(ctx context.Context) error {
 	const (
 		maxWait = 45 * time.Second
@@ -369,7 +321,6 @@ func (c *Client) flush(ctx context.Context) bool {
 		}
 
 		if err := c.sendBatch(ctx, events); err != nil {
-			// Server unreachable — clear token so next flush re-authenticates.
 			c.mu.Lock()
 			c.token = ""
 			c.mu.Unlock()
@@ -389,8 +340,6 @@ func (c *Client) flush(ctx context.Context) bool {
 func (c *Client) sendBatch(ctx context.Context, events []*models.RawEvent) error {
 	return c.post(ctx, "/api/v1/metrics/batch", events, nil)
 }
-
-// ─── HTTP helper ──────────────────────────────────────────────────────────────
 
 func (c *Client) post(ctx context.Context, path string, body, out interface{}) error {
 	var bodyBytes []byte
