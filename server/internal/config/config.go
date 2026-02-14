@@ -51,9 +51,17 @@ func Load() *Config {
 func mlInferenceURLFromEnv() string {
 	v, ok := os.LookupEnv("ML_INFERENCE_URL")
 	if !ok {
-		return "http://127.0.0.1:8090"
+		if fileExists("/.dockerenv") {
+			return "http://inference:9090"
+		}
+		return "http://127.0.0.1:9090"
 	}
 	return strings.TrimSpace(v)
+}
+
+func fileExists(path string) bool {
+	st, err := os.Stat(path)
+	return err == nil && !st.IsDir()
 }
 
 func getEnv(key, defaultVal string) string {

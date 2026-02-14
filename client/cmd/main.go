@@ -21,7 +21,6 @@ import (
 	"game-activity-monitor/client/internal/trayprompt"
 )
 
-// Dev-only: at most one open interval at a time (FSM aligned with server).
 var (
 	intervalMu    sync.Mutex
 	intervalStart *time.Time
