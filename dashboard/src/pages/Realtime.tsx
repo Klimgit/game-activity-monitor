@@ -144,9 +144,7 @@ export default function Realtime() {
     if (dataUpdatedAt === 0) return
 
     const sysEvents = events.filter((e) => e.event_type === 'system_metrics')
-    // window_metrics events carry pre-aggregated mouse/keyboard stats.
-    // Individual mouse_move / key_press events are no longer forwarded by the
-    // client aggregator, so we use window_metrics as the activity source.
+
     const winEvents = events.filter((e) => e.event_type === 'window_metrics')
 
     const cpuValues = sysEvents

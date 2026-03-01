@@ -12,13 +12,11 @@ function renderHeatmap(canvas: HTMLCanvasElement, points: ClickPoint[]) {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-  // Compute coordinate range to scale points to the canvas.
   const maxX = Math.max(...points.map((p) => p.x), 1920)
   const maxY = Math.max(...points.map((p) => p.y), 1080)
   const scaleX = canvas.width / maxX
   const scaleY = canvas.height / maxY
 
-  // Draw each click as a radial gradient; blending creates the heat effect.
   for (const p of points) {
     const cx = p.x * scaleX
     const cy = p.y * scaleY
@@ -53,7 +51,6 @@ export default function Heatmap() {
     enabled: selectedId !== null,
   })
 
-  // Re-render canvas whenever points or canvas size change.
   useEffect(() => {
     if (canvasRef.current && points.length > 0) {
       renderHeatmap(canvasRef.current, points)

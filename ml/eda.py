@@ -97,12 +97,12 @@ def main() -> int:
         log(f"Rows per session — min {per_sess.min()}, max {per_sess.max()}, mean {per_sess.mean():.1f}")
         if len(per_sess) > 1 and per_sess.max() / max(1, per_sess.min()) > 30:
             log(
-                "⚠ Very uneven rows per session (long vs short sessions); "
+                "Very uneven rows per session (long vs short sessions); "
                 "stratify collection or weight rows if needed."
             )
         if n_sess < 8:
             log(
-                "⚠ Few distinct sessions: session-based train/val/test is noisy; "
+                "Few distinct sessions: session-based train/val/test is noisy; "
                 "aim for more sessions (e.g. 10+) for stable metrics."
             )
         log("")
@@ -127,7 +127,7 @@ def main() -> int:
     if "session_id" in df.columns and "window_start" in df.columns:
         dup = df.duplicated(subset=["session_id", "window_start"], keep=False).sum()
         if dup:
-            log(f"⚠ Duplicate (session_id, window_start) rows: {dup}")
+            log(f"Duplicate (session_id, window_start) rows: {dup}")
             log("")
 
     # --- Text columns ---
