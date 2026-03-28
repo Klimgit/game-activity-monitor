@@ -1,0 +1,29 @@
+server:
+  url: "http://localhost:8000"
+  auto_reconnect: true
+  reconnect_interval: 30s
+
+auth:
+  email: ""
+  password: ""
+
+collectors:
+  intervals:
+    system_polling: 2s
+    aggregation_window: 30s
+  enabled:
+    - mouse
+    - keyboard
+    - system   # merged collector: cpu + memory + active process in one event
+
+hotkeys:
+  start_session: "ctrl+shift+s"
+  end_session:   "ctrl+shift+e"
+  mark_active:   "ctrl+shift+a"
+  mark_afk:      "ctrl+shift+f"
+  mark_menu:     "ctrl+shift+m"
+  mark_loading:  "ctrl+shift+l"
+
+offline:
+  max_queue_size: 50000
+  flush_interval: 5s
