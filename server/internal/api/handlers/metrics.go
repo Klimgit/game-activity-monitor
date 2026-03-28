@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,6 +10,12 @@ import (
 
 	"game-activity-monitor/server/internal/models"
 )
+
+// maxBatchSize caps the number of events accepted in a single request.
+// This prevents a misbehaving or malicious client from allocating unbounded
+// memory on the server. The client sync worker sends at most 1 000 events per
+// flush, so 5 000 gives comfortable headroom without risking DoS.
+const maxBatchSize = 5_000
 
 // ReceiveMetricsBatch accepts a JSON array of raw events from the desktop client.
 // The user_id on each event is overwritten with the authenticated user's ID
@@ -20,6 +27,13 @@ func ReceiveMetricsBatch(deps *Dependencies) gin.HandlerFunc {
 		var events []*models.RawEvent
 		if err := c.ShouldBindJSON(&events); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		if len(events) > maxBatchSize {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": fmt.Sprintf("batch too large: %d events (max %d)", len(events), maxBatchSize),
+			})
 			return
 		}
 

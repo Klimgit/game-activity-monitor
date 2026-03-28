@@ -17,25 +17,30 @@ import (
 // Client handles authentication and communication with the game-monitor server.
 // Unsent events are buffered in the local SQLite storage; the sync worker
 // flushes them on a regular interval.
+//
+// Thread-safety: all exported methods are safe for concurrent use. The fields
+// token, userID, and sessionID are guarded by mu; lastProcess by procMu.
 type Client struct {
 	baseURL       string
 	httpClient    *http.Client
 	flushInterval time.Duration
 	store         *storage.LocalStorage
 
-	// Credentials stored for automatic re-authentication on reconnect.
-	email    string
-	password string
-
-	// Set after successful login.
+	// mu guards token, userID, and sessionID which are accessed from the
+	// forwardEvents goroutine, the hotkey goroutine, and the sync worker.
+	mu        sync.Mutex
 	token     string
 	userID    int64
 	sessionID *int64
 
+	// Credentials stored for automatic re-authentication on reconnect.
+	email    string
+	password string
+
 	// Session duration tracking.
 	tracker *session.Tracker
 
-	// Most-recently observed active process name from system_metrics events.
+	// procMu guards lastProcess updated by system_metrics events.
 	procMu      sync.Mutex
 	lastProcess string
 }
@@ -52,15 +57,21 @@ func NewClient(baseURL string, flushInterval time.Duration, store *storage.Local
 }
 
 // UserID returns the ID of the currently authenticated user (0 if not logged in).
-func (c *Client) UserID() int64 { return c.userID }
+func (c *Client) UserID() int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.userID
+}
 
 // CurrentSessionID returns the active session ID, or nil when no session is open.
-func (c *Client) CurrentSessionID() *int64 { return c.sessionID }
+func (c *Client) CurrentSessionID() *int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sessionID
+}
 
 // LastKnownProcess returns the most recently detected active process name.
-// It is updated automatically by Enqueue() whenever a system_metrics event
-// is received from the system collector, so it reflects the process that was
-// using the most CPU at the last poll interval.
+// Updated automatically by Enqueue() from system_metrics events.
 func (c *Client) LastKnownProcess() string {
 	c.procMu.Lock()
 	defer c.procMu.Unlock()
@@ -95,21 +106,24 @@ func (c *Client) Login(ctx context.Context, email, password string) error {
 	if err := c.post(ctx, "/api/v1/auth/login", loginRequest{email, password}, &resp); err != nil {
 		return fmt.Errorf("login: %w", err)
 	}
+	c.mu.Lock()
 	c.token = resp.Token
 	c.userID = resp.User.ID
+	c.mu.Unlock()
 	return nil
 }
 
 // ─── Event buffering ──────────────────────────────────────────────────────────
 
-// Enqueue stamps the event with the current user/session IDs, updates internal
-// state (process tracking, session activity), and persists it to the local
-// SQLite buffer. The sync worker will forward it to the server.
+// Enqueue stamps the event with the current user/session IDs, updates process
+// tracking and session activity state, and persists to the local SQLite buffer.
 func (c *Client) Enqueue(ctx context.Context, e *models.RawEvent) error {
+	c.mu.Lock()
 	e.UserID = c.userID
 	e.SessionID = c.sessionID
+	c.mu.Unlock()
 
-	// Extract and cache the active process name so StartSession can use it.
+	// Extract and cache the active process name for StartSession auto-detection.
 	if e.EventType == models.EventSystemMetrics {
 		var data models.SystemMetricsData
 		if err := json.Unmarshal(e.Data, &data); err == nil && data.ActiveProcess != "" {
@@ -139,15 +153,26 @@ type sessionResponse struct {
 	ID int64 `json:"id"`
 }
 
-// StartSession opens a new session on the server, records its ID locally,
-// and starts the duration tracker.
+// StartSession opens a new session on the server and starts the duration tracker.
+// Returns an error if a session is already active — call EndSession first.
 func (c *Client) StartSession(ctx context.Context, gameName string) error {
+	c.mu.Lock()
+	if c.sessionID != nil {
+		c.mu.Unlock()
+		return fmt.Errorf("session %d is already active; end it first", *c.sessionID)
+	}
+	c.mu.Unlock()
+
 	var resp sessionResponse
 	if err := c.post(ctx, "/api/v1/sessions/start", startSessionRequest{gameName}, &resp); err != nil {
 		return fmt.Errorf("start session: %w", err)
 	}
 	sid := resp.ID
+
+	c.mu.Lock()
 	c.sessionID = &sid
+	c.mu.Unlock()
+
 	c.tracker.Start()
 	return nil
 }
@@ -162,9 +187,14 @@ type endSessionRequest struct {
 // EndSession stops the tracker, computes real durations, closes the active
 // session on the server, and clears the local session ID.
 func (c *Client) EndSession(ctx context.Context) error {
+	c.mu.Lock()
 	if c.sessionID == nil {
+		c.mu.Unlock()
 		return nil // no active session
 	}
+	sid := *c.sessionID
+	c.mu.Unlock()
+
 	total, active, afk, score := c.tracker.Stop()
 	req := endSessionRequest{
 		TotalDuration:  total,
@@ -172,11 +202,14 @@ func (c *Client) EndSession(ctx context.Context) error {
 		AFKDuration:    afk,
 		ActivityScore:  score,
 	}
-	path := fmt.Sprintf("/api/v1/sessions/%d/end", *c.sessionID)
+	path := fmt.Sprintf("/api/v1/sessions/%d/end", sid)
 	if err := c.post(ctx, path, req, nil); err != nil {
 		return fmt.Errorf("end session: %w", err)
 	}
+
+	c.mu.Lock()
 	c.sessionID = nil
+	c.mu.Unlock()
 	return nil
 }
 
@@ -190,10 +223,13 @@ type labelRequest struct {
 }
 
 // SendLabel posts an activity label directly to the server (bypasses the queue).
-// Labels must be sent immediately so the ground-truth timestamps are accurate.
 func (c *Client) SendLabel(ctx context.Context, state string) error {
+	c.mu.Lock()
+	sid := c.sessionID
+	c.mu.Unlock()
+
 	req := labelRequest{
-		SessionID: c.sessionID,
+		SessionID: sid,
 		Timestamp: time.Now().UTC(),
 		State:     state,
 		Source:    "manual_hotkey",
@@ -219,7 +255,6 @@ func (c *Client) StartSyncWorker(ctx context.Context) {
 		case <-ticker.C:
 			c.flush(context.Background())
 		case <-ctx.Done():
-			// Best-effort final flush on shutdown.
 			shutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			c.flush(shutCtx)
 			cancel()
@@ -229,12 +264,18 @@ func (c *Client) StartSyncWorker(ctx context.Context) {
 }
 
 func (c *Client) flush(ctx context.Context) {
-	// Auto-reconnect: if we have credentials but no token, try to log in first.
-	if c.token == "" {
-		if c.email == "" {
+	c.mu.Lock()
+	tok := c.token
+	email := c.email
+	password := c.password
+	c.mu.Unlock()
+
+	// Auto-reconnect: re-authenticate if token is missing.
+	if tok == "" {
+		if email == "" {
 			return // no credentials configured
 		}
-		if err := c.Login(ctx, c.email, c.password); err != nil {
+		if err := c.Login(ctx, email, password); err != nil {
 			return // server still unreachable; retry next tick
 		}
 	}
@@ -246,21 +287,19 @@ func (c *Client) flush(ctx context.Context) {
 		}
 
 		if err := c.sendBatch(ctx, events); err != nil {
-			// Server unreachable — keep events in SQLite, retry next tick.
-			// Clear the token so the next flush attempt will re-authenticate.
+			// Server unreachable — clear token so next flush re-authenticates.
+			c.mu.Lock()
 			c.token = ""
+			c.mu.Unlock()
 			return
 		}
 
-		// Successfully sent; remove from local buffer.
 		if err := c.store.DeleteByIDs(ctx, ids); err != nil {
-			// Rare: events were sent but deletion failed.
-			// They will be re-sent on the next flush (server must be idempotent).
 			return
 		}
 
 		if len(events) < syncBatchSize {
-			return // no more pending events
+			return
 		}
 	}
 }
@@ -287,8 +326,12 @@ func (c *Client) post(ctx context.Context, path string, body, out interface{}) e
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
+
+	c.mu.Lock()
+	tok := c.token
+	c.mu.Unlock()
+	if tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 
 	resp, err := c.httpClient.Do(req)
