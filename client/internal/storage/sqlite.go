@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -42,6 +43,12 @@ func New(path string) (*LocalStorage, error) {
 
 	// Single writer to avoid SQLITE_BUSY on concurrent goroutines.
 	db.SetMaxOpenConns(1)
+
+	// WAL mode: faster writes, no exclusive lock during reads.
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("storage.New: enable WAL: %w", err)
+	}
 
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
@@ -179,31 +186,27 @@ func (s *LocalStorage) FetchBatch(ctx context.Context, limit int) ([]*models.Raw
 	return events, ids, rows.Err()
 }
 
-// DeleteByIDs removes the rows with the given ids (successfully synced events).
+// DeleteByIDs removes successfully-synced events in a single DELETE … IN (…)
+// statement, which is dramatically faster than N individual deletes.
 func (s *LocalStorage) DeleteByIDs(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback() //nolint:errcheck
+	// Build "DELETE FROM pending_events WHERE id IN (?,?,…)"
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1] // trim trailing comma
 
-	stmt, err := tx.PrepareContext(ctx, `DELETE FROM pending_events WHERE id = ?`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	for _, id := range ids {
-		if _, err := stmt.ExecContext(ctx, id); err != nil {
-			return err
-		}
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		args[i] = id
 	}
 
-	return tx.Commit()
+	_, err := s.db.ExecContext(ctx,
+		"DELETE FROM pending_events WHERE id IN ("+placeholders+")",
+		args...,
+	)
+	return err
 }
 
 // PendingCount returns the number of events waiting to be synced.
