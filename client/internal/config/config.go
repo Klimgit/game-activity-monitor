@@ -79,7 +79,7 @@ func Default() *Config {
 
 	cfg.Collectors.Intervals.SystemPolling = 2 * time.Second
 	cfg.Collectors.Intervals.AggregationWindow = 30 * time.Second
-	cfg.Collectors.Enabled = []string{"mouse", "keyboard", "cpu", "memory", "process"}
+	cfg.Collectors.Enabled = []string{"mouse", "keyboard", "system", "gpu"}
 
 	cfg.Hotkeys.StartSession = "ctrl+shift+s"
 	cfg.Hotkeys.EndSession = "ctrl+shift+e"

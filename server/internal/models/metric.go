@@ -14,6 +14,11 @@ const (
 	EventKeyPress      EventType = "key_press"
 	EventKeyRelease    EventType = "key_release"
 	EventSystemMetrics EventType = "system_metrics"
+	// EventWindowMetrics is a client-side aggregated summary covering one
+	// aggregation window (default 30 s).  On the server it is stored both in
+	// raw_input_events (short-term, for real-time queries) and mirrored into
+	// session_windows (1-year retention, for ML training).
+	EventWindowMetrics EventType = "window_metrics"
 )
 
 // RawEvent is a single timestamped event stored in the hypertable.
@@ -52,6 +57,20 @@ type SystemMetricsData struct {
 	GPUMemUsedMB  int64   `json:"gpu_mem_used_mb,omitempty"`
 	ActiveProcess string  `json:"active_process,omitempty"`
 	WindowTitle   string  `json:"window_title,omitempty"`
+}
+
+// WindowMetricsData is the JSON payload inside a window_metrics RawEvent.
+type WindowMetricsData struct {
+	WindowStart   time.Time `json:"window_start"`
+	WindowEnd     time.Time `json:"window_end"`
+	DurationS     float64   `json:"duration_s"`
+	MouseMoves    int       `json:"mouse_moves"`
+	MouseClicks   int       `json:"mouse_clicks"`
+	SpeedAvg      float64   `json:"speed_avg"`
+	SpeedMax      float64   `json:"speed_max"`
+	Keystrokes    int       `json:"keystrokes"`
+	KeyHoldAvgMs  float64   `json:"key_hold_avg_ms"`
+	ActiveProcess string    `json:"active_process,omitempty"`
 }
 
 // ClickPoint is used by the heatmap endpoint.
