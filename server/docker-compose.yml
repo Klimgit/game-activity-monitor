@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: game-monitor-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: game_metrics
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build: .
+    container_name: game-monitor-server
+    environment:
+      PORT: "8000"
+      DATABASE_URL: postgres://postgres:${DB_PASSWORD}@timescaledb:5432/game_metrics?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "8000:8000"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  db_data:
