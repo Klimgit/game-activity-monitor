@@ -42,12 +42,11 @@ func NewManager(cfg *config.Config) *Manager {
 	if enabled["keyboard"] {
 		colls = append(colls, newKeyboardCollector(hookBus))
 	}
-	// Any of the legacy names or "system" enables the merged collector.
-	if enabled["cpu"] || enabled["memory"] || enabled["process"] || enabled["system"] {
-		colls = append(colls, newSystemCollector(cfg.Collectors.Intervals.SystemPolling))
-	}
-	if enabled["gpu"] {
-		colls = append(colls, newGPUCollector(cfg.Collectors.Intervals.SystemPolling))
+	// Any of the legacy names, "system", or "gpu" enables the merged collector.
+	// "gpu" additionally activates the nvidia-smi / sysfs GPU probe on each tick.
+	wantSystem := enabled["cpu"] || enabled["memory"] || enabled["process"] || enabled["system"] || enabled["gpu"]
+	if wantSystem {
+		colls = append(colls, newSystemCollector(cfg.Collectors.Intervals.SystemPolling, enabled["gpu"]))
 	}
 
 	return &Manager{collectors: colls, hookBus: hookBus}

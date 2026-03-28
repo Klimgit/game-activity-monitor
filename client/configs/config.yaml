@@ -15,6 +15,7 @@ collectors:
     - mouse
     - keyboard
     - system   # merged collector: cpu + memory + active process in one event
+    - gpu      # enables nvidia-smi / sysfs GPU utilization probe (set collectGPU=true)
 
 hotkeys:
   start_session: "ctrl+shift+s"

@@ -9,6 +9,7 @@ import (
 
 	"github.com/getlantern/systray"
 
+	"game-activity-monitor/client/internal/aggregator"
 	"game-activity-monitor/client/internal/api"
 	"game-activity-monitor/client/internal/collectors"
 	"game-activity-monitor/client/internal/config"
@@ -84,7 +85,14 @@ func run(ctx context.Context, cancel context.CancelFunc, statusItem *systray.Men
 	go apiClient.StartSyncWorker(ctx)
 
 	// ── Collectors ────────────────────────────────────────────────────────────
-	eventChan := make(chan *models.RawEvent, cfg.Offline.MaxQueueSize)
+	// rawChan carries every event emitted by the collectors.
+	// aggChan carries only the events that survive the aggregator:
+	//   • mouse_click and system_metrics (pass-through)
+	//   • window_metrics (one per aggregation window, replaces individual
+	//     mouse_move / key_press / key_release events)
+	rawChan := make(chan *models.RawEvent, cfg.Offline.MaxQueueSize)
+	aggChan := make(chan *models.RawEvent, 512)
+
 	mgr := collectors.NewManager(cfg)
 
 	// Subscribe to the hook bus BEFORE Start() so the hotkey manager shares
@@ -92,10 +100,14 @@ func run(ctx context.Context, cancel context.CancelFunc, statusItem *systray.Men
 	// concurrent hook.Start() call which causes a race condition in gohook.
 	hookCh := mgr.SubscribeHook()
 
-	mgr.Start(ctx, eventChan)
+	mgr.Start(ctx, rawChan)
 
-	// Forward collector events → stamp with user/session → save to SQLite.
-	go forwardEvents(ctx, apiClient, eventChan)
+	// Aggregator reduces high-frequency events into per-window summaries.
+	agg := aggregator.New(cfg.Collectors.Intervals.AggregationWindow, rawChan, aggChan)
+	go agg.Run(ctx)
+
+	// Forward aggregated events → stamp with user/session → save to SQLite.
+	go forwardEvents(ctx, apiClient, aggChan)
 
 	// ── Hotkeys ───────────────────────────────────────────────────────────────
 	hotkeyMgr := hotkeys.NewManagerFromBus(hookCh)
