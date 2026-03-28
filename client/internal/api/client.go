@@ -97,8 +97,10 @@ type loginResponse struct {
 // SetCredentials stores the email/password so the sync worker can
 // automatically re-authenticate after a connection loss.
 func (c *Client) SetCredentials(email, password string) {
+	c.mu.Lock()
 	c.email = email
 	c.password = password
+	c.mu.Unlock()
 }
 
 // Login authenticates with the server and stores the JWT + user ID.

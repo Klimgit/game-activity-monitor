@@ -216,7 +216,7 @@ func (ts *TimescaleStorage) CreateSession(ctx context.Context, s *models.Session
 }
 
 func (ts *TimescaleStorage) UpdateSession(ctx context.Context, s *models.Session) error {
-	_, err := ts.db.ExecContext(ctx, `
+	res, err := ts.db.ExecContext(ctx, `
 		UPDATE activity_sessions
 		SET    session_end     = $1,
 		       total_duration  = $2,
@@ -231,6 +231,13 @@ func (ts *TimescaleStorage) UpdateSession(ctx context.Context, s *models.Session
 	)
 	if err != nil {
 		return fmt.Errorf("storage.UpdateSession: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("storage.UpdateSession rows affected: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("storage.UpdateSession: session %d not found or not owned by user %d", s.ID, s.UserID)
 	}
 	return nil
 }

@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { metricsApi } from '../api'
-import type { SystemMetricsData } from '../types/api'
+import type { SystemMetricsData, WindowMetricsData } from '../types/api'
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -18,8 +18,10 @@ interface ChartPoint {
   time: string
   cpu: number
   mem: number
-  mouseActivity: number
-  keyActivity: number
+  gpu: number
+  mouseActivity: number   // mouse_moves from window_metrics (or clicks as fallback)
+  keyActivity: number     // keystrokes from window_metrics
+  speedAvg: number        // avg mouse speed px/s from window_metrics
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -119,26 +121,33 @@ export default function Realtime() {
     if (dataUpdatedAt === 0) return
 
     const sysEvents = events.filter((e) => e.event_type === 'system_metrics')
-    const mouseEvents = events.filter(
-      (e) => e.event_type === 'mouse_move' || e.event_type === 'mouse_click',
-    )
-    const keyEvents = events.filter((e) => e.event_type === 'key_press')
+    // window_metrics events carry pre-aggregated mouse/keyboard stats.
+    // Individual mouse_move / key_press events are no longer forwarded by the
+    // client aggregator, so we use window_metrics as the activity source.
+    const winEvents = events.filter((e) => e.event_type === 'window_metrics')
 
     const cpuValues = sysEvents
       .map((e) => (e.data as SystemMetricsData).cpu_percent ?? 0)
       .filter((v) => v > 0)
-
     const memValues = sysEvents
       .map((e) => (e.data as SystemMetricsData).mem_percent ?? 0)
+      .filter((v) => v > 0)
+    const gpuValues = sysEvents
+      .map((e) => (e.data as SystemMetricsData).gpu_percent ?? 0)
       .filter((v) => v > 0)
 
     const processes = sysEvents
       .map((e) => (e.data as SystemMetricsData).active_process)
       .filter((v): v is string => Boolean(v))
-
     if (processes.length > 0) {
       setActiveProcess(processes.at(-1)!)
     }
+
+    // Sum mouse/keyboard counts across all window_metrics in this poll window.
+    const winData = winEvents.map((e) => e.data as unknown as WindowMetricsData)
+    const totalMoves = winData.reduce((s, d) => s + (d.mouse_moves ?? 0), 0)
+    const totalKeys  = winData.reduce((s, d) => s + (d.keystrokes  ?? 0), 0)
+    const speedValues = winData.map((d) => d.speed_avg ?? 0).filter((v) => v > 0)
 
     const newPoint: ChartPoint = {
       time: new Date().toLocaleTimeString('en', {
@@ -149,8 +158,10 @@ export default function Realtime() {
       }),
       cpu: Math.round(avg(cpuValues) * 10) / 10,
       mem: Math.round(avg(memValues) * 10) / 10,
-      mouseActivity: mouseEvents.length,
-      keyActivity: keyEvents.length,
+      gpu: Math.round(avg(gpuValues) * 10) / 10,
+      mouseActivity: totalMoves,
+      keyActivity: totalKeys,
+      speedAvg: Math.round(avg(speedValues)),
     }
 
     setHistory((prev) => [...prev.slice(-59), newPoint])
@@ -173,8 +184,10 @@ export default function Realtime() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="CPU" value={latest?.cpu ?? 0} unit="%" color="text-blue-400" />
         <StatCard label="Memory" value={latest?.mem ?? 0} unit="%" color="text-green-400" />
-        <StatCard label="Mouse events / 30s" value={latest?.mouseActivity ?? 0} color="text-yellow-400" />
-        <StatCard label="Key presses / 30s" value={latest?.keyActivity ?? 0} color="text-purple-400" />
+        <StatCard label="GPU" value={latest?.gpu ?? 0} unit="%" color="text-orange-400" />
+        <StatCard label="Mouse moves / window" value={latest?.mouseActivity ?? 0} color="text-yellow-400" />
+        <StatCard label="Keystrokes / window" value={latest?.keyActivity ?? 0} color="text-purple-400" />
+        <StatCard label="Avg mouse speed" value={latest?.speedAvg ?? 0} unit="px/s" color="text-cyan-400" />
       </div>
 
       {/* ── Info row ─────────────────────────────────────────────────────── */}
@@ -193,8 +206,10 @@ export default function Realtime() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <ChartCard title="CPU Usage" data={history} dataKey="cpu" color="#60a5fa" domain={[0, 100]} unit="%" />
         <ChartCard title="Memory Usage" data={history} dataKey="mem" color="#4ade80" domain={[0, 100]} unit="%" />
-        <ChartCard title="Mouse Activity (events / 30s)" data={history} dataKey="mouseActivity" color="#facc15" />
-        <ChartCard title="Keyboard Activity (events / 30s)" data={history} dataKey="keyActivity" color="#c084fc" />
+        <ChartCard title="GPU Utilization" data={history} dataKey="gpu" color="#fb923c" domain={[0, 100]} unit="%" />
+        <ChartCard title="Mouse Moves / Window" data={history} dataKey="mouseActivity" color="#facc15" />
+        <ChartCard title="Keystrokes / Window" data={history} dataKey="keyActivity" color="#c084fc" />
+        <ChartCard title="Avg Mouse Speed" data={history} dataKey="speedAvg" color="#22d3ee" unit="px/s" />
       </div>
 
       {/* ── Hotkeys reference ─────────────────────────────────────────────── */}

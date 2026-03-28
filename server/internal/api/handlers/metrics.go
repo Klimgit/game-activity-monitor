@@ -11,6 +11,26 @@ import (
 	"game-activity-monitor/server/internal/models"
 )
 
+// validatedSessionIDs returns the set of session IDs present in the batch
+// that actually belong to uid.  Unknown IDs (wrong owner or non-existent) are
+// not included; their events will have session_id set to NULL instead.
+func validatedSessionIDs(c *gin.Context, deps *Dependencies, uid int64, events []*models.RawEvent) map[int64]bool {
+	seen := make(map[int64]struct{})
+	for _, e := range events {
+		if e != nil && e.SessionID != nil {
+			seen[*e.SessionID] = struct{}{}
+		}
+	}
+	valid := make(map[int64]bool, len(seen))
+	for sid := range seen {
+		s, err := deps.Storage.GetSessionByID(c.Request.Context(), sid, uid)
+		if err == nil && s != nil {
+			valid[sid] = true
+		}
+	}
+	return valid
+}
+
 // maxBatchSize caps the number of events accepted in a single request.
 // This prevents a misbehaving or malicious client from allocating unbounded
 // memory on the server. The client sync worker sends at most 1 000 events per
@@ -37,9 +57,30 @@ func ReceiveMetricsBatch(deps *Dependencies) gin.HandlerFunc {
 			return
 		}
 
+		// Validate session IDs upfront (per unique ID, not per event).
+		// Events whose session_id belongs to a different user are
+		// re-attributed to NULL rather than rejected — so a single bad
+		// entry does not discard the whole batch.
+		validSIDs := validatedSessionIDs(c, deps, uid, events)
+
 		for _, e := range events {
+			if e == nil {
+				continue // guard against null JSON elements in the array
+			}
 			e.UserID = uid
+			if e.SessionID != nil && !validSIDs[*e.SessionID] {
+				e.SessionID = nil
+			}
 		}
+
+		// Compact out any nil entries before hitting the DB.
+		clean := events[:0]
+		for _, e := range events {
+			if e != nil {
+				clean = append(clean, e)
+			}
+		}
+		events = clean
 
 		if err := deps.Storage.SaveEventsBatch(c.Request.Context(), events); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save events"})

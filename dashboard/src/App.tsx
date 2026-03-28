@@ -5,6 +5,7 @@ import Login from './pages/Login'
 import Realtime from './pages/Realtime'
 import Sessions from './pages/Sessions'
 import Heatmap from './pages/Heatmap'
+import Labels from './pages/Labels'
 import Export from './pages/Export'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="/realtime" element={<Realtime />} />
         <Route path="/sessions" element={<Sessions />} />
         <Route path="/heatmap" element={<Heatmap />} />
+        <Route path="/labels" element={<Labels />} />
         <Route path="/export" element={<Export />} />
       </Route>
     </Routes>

@@ -64,10 +64,17 @@ func (a *Aggregator) Run(ctx context.Context) {
 			}
 			switch ev.EventType {
 			case models.EventMouseClick, models.EventSystemMetrics:
-				// Forward immediately; also count clicks for the window summary.
+				// Forward immediately.
 				a.Out <- ev
 				if ev.EventType == models.EventMouseClick {
 					acc.mouseClicks++
+				} else {
+					// Extract the active process name so the window summary can
+					// carry it even though system_metrics events pass through.
+					var sys models.SystemMetricsData
+					if err := json.Unmarshal(ev.Data, &sys); err == nil && sys.ActiveProcess != "" {
+						acc.lastProcess = sys.ActiveProcess
+					}
 				}
 			default:
 				acc.ingest(ev)
@@ -118,19 +125,20 @@ func (w *windowAccumulator) ingest(ev *models.RawEvent) {
 		}
 
 	case models.EventKeyPress:
+		// Count each initial key-down as one keystroke.  The keyboard collector
+		// does not populate HoldMs on press — that arrives with key_release.
+		w.keystrokes++
+
+	case models.EventKeyRelease:
+		// Hold duration is measured by the keyboard collector on key-up.
 		var d models.KeyEventData
 		if err := json.Unmarshal(ev.Data, &d); err != nil {
 			return
 		}
-		w.keystrokes++
 		if d.HoldMs > 0 {
 			w.holdMsSum += float64(d.HoldMs)
 			w.holdCount++
 		}
-
-	case models.EventKeyRelease:
-		// key_release does not carry hold_ms; skip to avoid double-counting.
-		// Hold duration is recorded on the corresponding key_press event.
 	}
 }
 
