@@ -98,8 +98,9 @@ func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*model
 		INSERT INTO session_windows
 		    (time, user_id, session_id, window_start, window_end, duration_s,
 		     mouse_moves, mouse_clicks, speed_avg, speed_max,
-		     keystrokes, key_hold_avg_ms, active_process)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`)
+		     keystrokes, key_hold_avg_ms, active_process,
+		     cpu_avg, cpu_max, mem_avg, gpu_util_avg, gpu_temp_avg)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`)
 	if err != nil {
 		return fmt.Errorf("storage.SaveEventsBatch prepare window: %w", err)
 	}
@@ -140,6 +141,7 @@ func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*model
 					w.WindowStart, w.WindowEnd, w.DurationS,
 					w.MouseMoves, w.MouseClicks, w.SpeedAvg, w.SpeedMax,
 					w.Keystrokes, w.KeyHoldAvgMs, w.ActiveProcess,
+					w.CPUAvg, w.CPUMax, w.MemAvg, w.GPUUtilAvg, w.GPUTempAvg,
 				); err != nil {
 					return fmt.Errorf("storage.SaveEventsBatch exec window: %w", err)
 				}

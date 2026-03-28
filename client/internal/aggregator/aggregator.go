@@ -62,20 +62,23 @@ func (a *Aggregator) Run(ctx context.Context) {
 				flush()
 				return
 			}
-			switch ev.EventType {
-			case models.EventMouseClick, models.EventSystemMetrics:
-				// Forward immediately.
-				a.Out <- ev
-				if ev.EventType == models.EventMouseClick {
-					acc.mouseClicks++
-				} else {
-					// Extract the active process name so the window summary can
-					// carry it even though system_metrics events pass through.
-					var sys models.SystemMetricsData
-					if err := json.Unmarshal(ev.Data, &sys); err == nil && sys.ActiveProcess != "" {
+		switch ev.EventType {
+		case models.EventMouseClick, models.EventSystemMetrics:
+			// Forward immediately.
+			a.Out <- ev
+			if ev.EventType == models.EventMouseClick {
+				acc.mouseClicks++
+			} else {
+				// Accumulate hardware samples and active process even though
+				// system_metrics events pass through to the real-time dashboard.
+				var sys models.SystemMetricsData
+				if err := json.Unmarshal(ev.Data, &sys); err == nil {
+					if sys.ActiveProcess != "" {
 						acc.lastProcess = sys.ActiveProcess
 					}
+					acc.addHardwareSample(sys.CPUPercent, sys.MemPercent, sys.GPUPercent, sys.GPUTempC)
 				}
+			}
 			default:
 				acc.ingest(ev)
 			}
@@ -101,6 +104,13 @@ type windowAccumulator struct {
 	holdMsSum   float64
 	holdCount   int
 	lastProcess string
+	// Hardware metrics accumulated from system_metrics pass-through events.
+	cpuSum      float64
+	cpuMax      float64
+	memSum      float64
+	gpuUtilSum  float64
+	gpuTempSum  float64
+	hwCount     int // number of system_metrics samples in this window
 }
 
 func (w *windowAccumulator) reset() {
@@ -108,7 +118,18 @@ func (w *windowAccumulator) reset() {
 }
 
 func (w *windowAccumulator) hasData() bool {
-	return w.mouseMoves > 0 || w.keystrokes > 0 || w.mouseClicks > 0
+	return w.mouseMoves > 0 || w.keystrokes > 0 || w.mouseClicks > 0 || w.hwCount > 0
+}
+
+func (w *windowAccumulator) addHardwareSample(cpu, mem, gpuUtil, gpuTemp float64) {
+	w.hwCount++
+	w.cpuSum += cpu
+	if cpu > w.cpuMax {
+		w.cpuMax = cpu
+	}
+	w.memSum += mem
+	w.gpuUtilSum += gpuUtil
+	w.gpuTempSum += gpuTemp
 }
 
 func (w *windowAccumulator) ingest(ev *models.RawEvent) {
@@ -153,6 +174,15 @@ func (w *windowAccumulator) toEvent(start, end time.Time) *models.RawEvent {
 		holdAvg = w.holdMsSum / float64(w.holdCount)
 	}
 
+	var cpuAvg, memAvg, gpuUtilAvg, gpuTempAvg float64
+	if w.hwCount > 0 {
+		n := float64(w.hwCount)
+		cpuAvg = w.cpuSum / n
+		memAvg = w.memSum / n
+		gpuUtilAvg = w.gpuUtilSum / n
+		gpuTempAvg = w.gpuTempSum / n
+	}
+
 	return &models.RawEvent{
 		Timestamp: end,
 		EventType: models.EventWindowMetrics,
@@ -167,6 +197,11 @@ func (w *windowAccumulator) toEvent(start, end time.Time) *models.RawEvent {
 			Keystrokes:    w.keystrokes,
 			KeyHoldAvgMs:  holdAvg,
 			ActiveProcess: w.lastProcess,
+			CPUAvg:        cpuAvg,
+			CPUMax:        w.cpuMax,
+			MemAvg:        memAvg,
+			GPUUtilAvg:    gpuUtilAvg,
+			GPUTempAvg:    gpuTempAvg,
 		}),
 	}
 }
