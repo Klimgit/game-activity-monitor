@@ -22,7 +22,7 @@ Desktop Client (Go)
           ▼
 Backend Server (Go/Gin)
   ├── REST API (JWT auth)
-  ├── TimescaleDB (metrics, sessions, labels)
+  ├── TimescaleDB (metrics, sessions, activity intervals)
   └── Retention: raw events kept 1 hour, sessions kept forever
 
 Dashboard (React)
@@ -73,4 +73,4 @@ npm run dev     # runs on http://localhost:5173, proxied to server :8000
 
 - **raw_input_events** — TimescaleDB hypertable, 1-hour retention, stores every mouse/keyboard/system event
 - **activity_sessions** — one row per gaming session with aggregated durations and activity score
-- **activity_labels** — manual ground-truth labels attached via hotkeys (for ML dataset annotation)
+- **activity_intervals** — ground-truth time ranges (`active_gameplay` / `afk` / `menu` / `loading`) via dev hotkeys or API. ML CSV is built **inside the service** with `go run ./cmd/collectdataset` (uses `DATABASE_URL`, not end-user HTTP).

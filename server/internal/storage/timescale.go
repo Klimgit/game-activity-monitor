@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -63,6 +65,23 @@ func (ts *TimescaleStorage) GetUserByEmail(ctx context.Context, email string) (*
 	return &u, nil
 }
 
+func (ts *TimescaleStorage) ListUserIDs(ctx context.Context) ([]int64, error) {
+	rows, err := ts.db.QueryContext(ctx, `SELECT id FROM users ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("storage.ListUserIDs: %w", err)
+	}
+	defer closeRows(rows)
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("storage.ListUserIDs: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // ─── Raw events ───────────────────────────────────────────────────────────────
 
 func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*models.RawEvent) error {
@@ -74,7 +93,7 @@ func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*model
 	if err != nil {
 		return fmt.Errorf("storage.SaveEventsBatch begin: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer rollbackTx(tx)
 
 	rawStmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO raw_input_events (user_id, session_id, timestamp, event_type, data)
@@ -82,7 +101,7 @@ func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*model
 	if err != nil {
 		return fmt.Errorf("storage.SaveEventsBatch prepare raw: %w", err)
 	}
-	defer rawStmt.Close()
+	defer closeStmt(rawStmt)
 
 	// Prepared statement for the long-term click store used by the heatmap.
 	clickStmt, err := tx.PrepareContext(ctx, `
@@ -91,7 +110,7 @@ func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*model
 	if err != nil {
 		return fmt.Errorf("storage.SaveEventsBatch prepare click: %w", err)
 	}
-	defer clickStmt.Close()
+	defer closeStmt(clickStmt)
 
 	// Prepared statement for aggregated window metrics used for ML training.
 	winStmt, err := tx.PrepareContext(ctx, `
@@ -104,7 +123,7 @@ func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*model
 	if err != nil {
 		return fmt.Errorf("storage.SaveEventsBatch prepare window: %w", err)
 	}
-	defer winStmt.Close()
+	defer closeStmt(winStmt)
 
 	for _, e := range events {
 		dataJSON, err := json.Marshal(e.Data)
@@ -164,7 +183,7 @@ func (ts *TimescaleStorage) GetRecentEvents(ctx context.Context, userID int64, s
 	if err != nil {
 		return nil, fmt.Errorf("storage.GetRecentEvents: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 	return scanEvents(rows)
 }
 
@@ -275,7 +294,7 @@ func (ts *TimescaleStorage) GetSessions(ctx context.Context, userID int64, from,
 	if err != nil {
 		return nil, fmt.Errorf("storage.GetSessions: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 	return scanSessions(rows)
 }
 
@@ -328,68 +347,170 @@ func scanSessions(rows *sql.Rows) ([]*models.Session, error) {
 	return sessions, rows.Err()
 }
 
-// ─── Activity labels ──────────────────────────────────────────────────────────
+// ─── Activity intervals (ML ground truth) ─────────────────────────────────────
 
-func (ts *TimescaleStorage) CreateLabel(ctx context.Context, l *models.ActivityLabel) (*models.ActivityLabel, error) {
-	var created models.ActivityLabel
-	var sessionID sql.NullInt64
-	if l.SessionID != nil {
-		sessionID = sql.NullInt64{Int64: *l.SessionID, Valid: true}
+func (ts *TimescaleStorage) CreateActivityInterval(ctx context.Context, iv *models.ActivityInterval) (*models.ActivityInterval, error) {
+	if iv.EndAt.Before(iv.StartAt) || iv.EndAt.Equal(iv.StartAt) {
+		return nil, fmt.Errorf("invalid interval: end_at must be after start_at")
 	}
 
+	// Ensure session belongs to user and check FSM non-overlap.
+	var owner int64
 	err := ts.db.QueryRowContext(ctx, `
-		INSERT INTO activity_labels (user_id, session_id, timestamp, state, source)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, user_id, session_id, timestamp, state, source, created_at`,
-		l.UserID, sessionID, l.Timestamp, l.State, l.Source,
+		SELECT user_id FROM activity_sessions WHERE id = $1`, iv.SessionID,
+	).Scan(&owner)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("session not found")
+		}
+		return nil, fmt.Errorf("storage.CreateActivityInterval session: %w", err)
+	}
+	if owner != iv.UserID {
+		return nil, fmt.Errorf("session does not belong to user")
+	}
+
+	var overlap int
+	err = ts.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM activity_intervals
+		WHERE session_id = $1
+		  AND start_at < $3 AND end_at > $2`,
+		iv.SessionID, iv.StartAt, iv.EndAt,
+	).Scan(&overlap)
+	if err != nil {
+		return nil, fmt.Errorf("storage.CreateActivityInterval overlap: %w", err)
+	}
+	if overlap > 0 {
+		return nil, fmt.Errorf("interval overlaps an existing interval in this session")
+	}
+
+	var out models.ActivityInterval
+	err = ts.db.QueryRowContext(ctx, `
+		INSERT INTO activity_intervals (user_id, session_id, state, start_at, end_at, source)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, user_id, session_id, state, start_at, end_at, source, created_at`,
+		iv.UserID, iv.SessionID, iv.State, iv.StartAt, iv.EndAt, iv.Source,
 	).Scan(
-		&created.ID, &created.UserID, &sessionID,
-		&created.Timestamp, &created.State, &created.Source, &created.CreatedAt,
+		&out.ID, &out.UserID, &out.SessionID, &out.State,
+		&out.StartAt, &out.EndAt, &out.Source, &out.CreatedAt,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("storage.CreateLabel: %w", err)
+		return nil, fmt.Errorf("storage.CreateActivityInterval: %w", err)
 	}
-	if sessionID.Valid {
-		sid := sessionID.Int64
-		created.SessionID = &sid
-	}
-	return &created, nil
+	return &out, nil
 }
 
-func (ts *TimescaleStorage) GetLabels(ctx context.Context, userID int64, sessionID *int64) ([]*models.ActivityLabel, error) {
-	query := `
-		SELECT id, user_id, session_id, timestamp, state, source, created_at
-		FROM   activity_labels
-		WHERE  user_id = $1`
-	args := []interface{}{userID}
-
+func (ts *TimescaleStorage) ListActivityIntervals(ctx context.Context, userID int64, sessionID *int64, from, to time.Time) ([]*models.ActivityInterval, error) {
+	q := `
+		SELECT id, user_id, session_id, state, start_at, end_at, source, created_at
+		FROM   activity_intervals
+		WHERE  user_id = $1
+		  AND end_at >= $2 AND start_at <= $3`
+	args := []interface{}{userID, from, to}
+	argN := 4
 	if sessionID != nil {
-		query += " AND session_id = $2"
+		q += fmt.Sprintf(" AND session_id = $%d", argN)
 		args = append(args, *sessionID)
+		argN++
 	}
-	query += " ORDER BY timestamp DESC LIMIT 1000"
+	q += " ORDER BY start_at ASC"
 
-	rows, err := ts.db.QueryContext(ctx, query, args...)
+	rows, err := ts.db.QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, fmt.Errorf("storage.GetLabels: %w", err)
+		return nil, fmt.Errorf("storage.ListActivityIntervals: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 
-	var labels []*models.ActivityLabel
+	var list []*models.ActivityInterval
 	for rows.Next() {
-		var l models.ActivityLabel
-		var sid sql.NullInt64
-		err := rows.Scan(&l.ID, &l.UserID, &sid, &l.Timestamp, &l.State, &l.Source, &l.CreatedAt)
-		if err != nil {
+		var iv models.ActivityInterval
+		if err := rows.Scan(
+			&iv.ID, &iv.UserID, &iv.SessionID, &iv.State,
+			&iv.StartAt, &iv.EndAt, &iv.Source, &iv.CreatedAt,
+		); err != nil {
 			return nil, err
 		}
-		if sid.Valid {
-			id := sid.Int64
-			l.SessionID = &id
-		}
-		labels = append(labels, &l)
+		list = append(list, &iv)
 	}
-	return labels, rows.Err()
+	return list, rows.Err()
+}
+
+// SessionWindowsForUser returns session_windows rows in the time range.
+func (ts *TimescaleStorage) SessionWindowsForUser(ctx context.Context, userID int64, from, to time.Time, sessionID *int64) ([]SessionWindowRow, error) {
+	q := `
+		SELECT time, user_id, session_id, window_start, window_end, duration_s,
+		       mouse_moves, mouse_clicks, speed_avg, speed_max,
+		       keystrokes, key_hold_avg_ms, active_process,
+		       cpu_avg, cpu_max, mem_avg, gpu_util_avg, gpu_temp_avg
+		FROM   session_windows
+		WHERE  user_id = $1
+		  AND window_end >= $2 AND window_start <= $3`
+	args := []interface{}{userID, from, to}
+	if sessionID != nil {
+		q += " AND session_id = $4"
+		args = append(args, *sessionID)
+	}
+	q += " ORDER BY window_start ASC"
+
+	rows, err := ts.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("storage.SessionWindowsForUser: %w", err)
+	}
+	defer closeRows(rows)
+
+	var out []SessionWindowRow
+	for rows.Next() {
+		var r SessionWindowRow
+		if err := rows.Scan(
+			&r.Time, &r.UserID, &r.SessionID, &r.WindowStart, &r.WindowEnd, &r.DurationS,
+			&r.MouseMoves, &r.MouseClicks, &r.SpeedAvg, &r.SpeedMax,
+			&r.Keystrokes, &r.KeyHoldAvgMs, &r.ActiveProcess,
+			&r.CPUAvg, &r.CPUMax, &r.MemAvg, &r.GPUUtilAvg, &r.GPUTempAvg,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// PlaytimeByState returns total seconds per state from activity_intervals in range.
+func (ts *TimescaleStorage) PlaytimeByState(ctx context.Context, userID int64, from, to time.Time, sessionID *int64) (map[string]int64, error) {
+	q := `
+		SELECT state,
+		       COALESCE(SUM(EXTRACT(EPOCH FROM (
+		         LEAST(end_at, $3::timestamptz) - GREATEST(start_at, $2::timestamptz)
+		       )))::bigint, 0)
+		FROM   activity_intervals
+		WHERE  user_id = $1
+		  AND end_at >= $2 AND start_at <= $3`
+	args := []interface{}{userID, from, to}
+	if sessionID != nil {
+		q += " AND session_id = $4"
+		args = append(args, *sessionID)
+	}
+	q += " GROUP BY state"
+
+	rows, err := ts.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("storage.PlaytimeByState: %w", err)
+	}
+	defer closeRows(rows)
+
+	out := map[string]int64{
+		"active_gameplay": 0,
+		"afk":             0,
+		"menu":            0,
+		"loading":         0,
+	}
+	for rows.Next() {
+		var state string
+		var sec int64
+		if err := rows.Scan(&state, &sec); err != nil {
+			return nil, err
+		}
+		out[state] = sec
+	}
+	return out, rows.Err()
 }
 
 // ─── Heatmap ──────────────────────────────────────────────────────────────────
@@ -409,7 +530,7 @@ func (ts *TimescaleStorage) GetHeatmapData(ctx context.Context, sessionID, userI
 	if err != nil {
 		return nil, fmt.Errorf("storage.GetHeatmapData: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 
 	var points []models.ClickPoint
 	for rows.Next() {
@@ -420,4 +541,28 @@ func (ts *TimescaleStorage) GetHeatmapData(ctx context.Context, sessionID, userI
 		points = append(points, p)
 	}
 	return points, rows.Err()
+}
+
+func closeRows(rows *sql.Rows) {
+	if rows == nil {
+		return
+	}
+	if err := rows.Close(); err != nil {
+		log.Printf("storage: close rows: %v", err)
+	}
+}
+
+func closeStmt(stmt *sql.Stmt) {
+	if stmt == nil {
+		return
+	}
+	if err := stmt.Close(); err != nil {
+		log.Printf("storage: close stmt: %v", err)
+	}
+}
+
+func rollbackTx(tx *sql.Tx) {
+	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		log.Printf("storage: tx rollback: %v", err)
+	}
 }
