@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"sync"
@@ -194,29 +195,34 @@ func (c *Client) EndSession(ctx context.Context) error {
 	return nil
 }
 
-// ─── Labels ───────────────────────────────────────────────────────────────────
+// ─── Activity intervals (ML ground truth) ─────────────────────────────────────
 
-type labelRequest struct {
-	SessionID *int64    `json:"session_id,omitempty"`
-	Timestamp time.Time `json:"timestamp"`
+type createIntervalRequest struct {
+	SessionID int64     `json:"session_id"`
 	State     string    `json:"state"`
+	StartAt   time.Time `json:"start_at"`
+	EndAt     time.Time `json:"end_at"`
 	Source    string    `json:"source"`
 }
 
-// SendLabel posts an activity label directly to the server (bypasses the queue).
-func (c *Client) SendLabel(ctx context.Context, state string) error {
+// CreateActivityInterval posts a closed [start_at, end_at] interval for the current session.
+func (c *Client) CreateActivityInterval(ctx context.Context, state string, start, end time.Time) error {
 	c.mu.Lock()
 	sid := c.sessionID
 	c.mu.Unlock()
-
-	req := labelRequest{
-		SessionID: sid,
-		Timestamp: time.Now().UTC(),
-		State:     state,
-		Source:    "manual_hotkey",
+	if sid == nil {
+		return fmt.Errorf("no active session — start a session before marking intervals")
 	}
-	if err := c.post(ctx, "/api/v1/labels", req, nil); err != nil {
-		return fmt.Errorf("send label: %w", err)
+
+	req := createIntervalRequest{
+		SessionID: *sid,
+		State:     state,
+		StartAt:   start.UTC(),
+		EndAt:     end.UTC(),
+		Source:    "dev_hotkey",
+	}
+	if err := c.post(ctx, "/api/v1/intervals", req, nil); err != nil {
+		return fmt.Errorf("create interval: %w", err)
 	}
 	return nil
 }
@@ -386,18 +392,31 @@ func (c *Client) post(ctx context.Context, path string, body, out interface{}) e
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			log.Printf("api: close response body: %v", cerr)
+		}
+	}()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response body: %w", err)
+	}
 
 	if resp.StatusCode >= 400 {
 		var errBody struct {
 			Error string `json:"error"`
 		}
-		_ = json.NewDecoder(resp.Body).Decode(&errBody)
+		if err := json.Unmarshal(respBody, &errBody); err != nil || errBody.Error == "" {
+			return fmt.Errorf("HTTP %d", resp.StatusCode)
+		}
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, errBody.Error)
 	}
 
 	if out != nil {
-		return json.NewDecoder(resp.Body).Decode(out)
+		if err := json.Unmarshal(respBody, out); err != nil {
+			return fmt.Errorf("decode response: %w", err)
+		}
 	}
 	return nil
 }

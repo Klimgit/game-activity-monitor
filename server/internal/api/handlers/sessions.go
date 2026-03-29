@@ -105,13 +105,20 @@ func GetSessions(deps *Dependencies) gin.HandlerFunc {
 
 		var from, to time.Time
 		if s := c.Query("from"); s != "" {
-			from, _ = time.Parse("2006-01-02", s)
+			t, err := time.ParseInLocation("2006-01-02", s, time.UTC)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid from date (use YYYY-MM-DD)"})
+				return
+			}
+			from = t
 		}
 		if s := c.Query("to"); s != "" {
-			to, _ = time.Parse("2006-01-02", s)
-			if !to.IsZero() {
-				to = to.Add(24*time.Hour - time.Nanosecond) // include whole day
+			t, err := time.ParseInLocation("2006-01-02", s, time.UTC)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid to date (use YYYY-MM-DD)"})
+				return
 			}
+			to = t.Add(24*time.Hour - time.Nanosecond) // include whole day
 		}
 
 		sessions, err := deps.Storage.GetSessions(c.Request.Context(), uid, from, to, c.Query("game"))

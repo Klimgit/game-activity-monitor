@@ -15,7 +15,7 @@ const (
 	EventKeyRelease    EventType = "key_release"
 	EventSystemMetrics EventType = "system_metrics"
 	// EventWindowMetrics is emitted by the client aggregator once per
-	// aggregation window (default 30 s).  It contains pre-computed features
+	// aggregation window (default 10 s).  It contains pre-computed features
 	// for mouse and keyboard activity and is stored server-side in the
 	// session_windows hypertable for long-term ML training data.
 	EventWindowMetrics EventType = "window_metrics"
@@ -56,7 +56,6 @@ type SystemMetricsData struct {
 	GPUTempC      float64 `json:"gpu_temp_c,omitempty"`
 	GPUMemUsedMB  int64   `json:"gpu_mem_used_mb,omitempty"`
 	ActiveProcess string  `json:"active_process,omitempty"`
-	WindowTitle   string  `json:"window_title,omitempty"`
 }
 
 // WindowMetricsData is the payload for EventWindowMetrics.
@@ -82,15 +81,6 @@ type WindowMetricsData struct {
 	MemAvg     float64 `json:"mem_avg"`
 	GPUUtilAvg float64 `json:"gpu_util_avg"`
 	GPUTempAvg float64 `json:"gpu_temp_avg"`
-}
-
-// ActivityLabel carries a manual hotkey annotation to the server.
-type ActivityLabel struct {
-	SessionID *int64    `json:"session_id,omitempty"`
-	Timestamp time.Time `json:"timestamp"`
-	// State: "active_gameplay" | "afk" | "menu" | "loading"
-	State  string `json:"state"`
-	Source string `json:"source"` // always "manual_hotkey" from the client
 }
 
 // MustMarshal serialises v to json.RawMessage, panicking only on programmer error.

@@ -86,13 +86,15 @@ export interface WindowMetricsData {
   gpu_temp_avg: number
 }
 
-export interface ActivityLabel {
+/** ML ground-truth interval (FSM: non-overlapping per session). */
+export interface ActivityInterval {
   id: number
   user_id: number
-  session_id?: number
-  timestamp: string
-  state: string  // active_gameplay | afk | menu | loading
-  source: string // manual_hotkey | auto_detected
+  session_id: number
+  state: string // active_gameplay | afk | menu | loading
+  start_at: string
+  end_at: string
+  source: string
   created_at: string
 }
 
