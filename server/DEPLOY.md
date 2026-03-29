@@ -42,10 +42,10 @@ sudo ufw enable
 
 ```bash
 curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker $USER
-newgrp docker   # apply group without logout
 docker --version
 ```
+
+Optional: add your user to the `docker` group so you can run `docker` without `sudo` (`sudo usermod -aG docker $USER`, then log out and back in). For a minimal setup you can skip this and use **`sudo docker compose`** everywhere (see [QUICKSTART.md](QUICKSTART.md)).
 
 ---
 
@@ -143,6 +143,17 @@ sudo mkdir -p /var/www/game-monitor
 ---
 
 ## 9. Start all services
+
+**Bind API to localhost only** (recommended on a public VPS so port 8000 is not exposed to the internet — Nginx will proxy to `127.0.0.1:8000`):
+
+In `docker-compose.yml`, under `server:` → `ports:`, use:
+
+```yaml
+    ports:
+      - "127.0.0.1:8000:8000"
+```
+
+The default in the repo is `8000:8000` for easy home-LAN access; change it before exposing the machine to the public internet.
 
 ```bash
 cd ~/game-activity-monitor/server
