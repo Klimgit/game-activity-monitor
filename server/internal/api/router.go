@@ -74,8 +74,6 @@ func SetupRouter(store storage.Storage, jwtMgr *auth.JWTManager) *gin.Engine {
 	{
 		export.GET("/csv", handlers.ExportCSV(deps))
 		export.GET("/json", handlers.ExportJSON(deps))
-		export.GET("/dataset-windows.csv", handlers.ExportDatasetWindowsCSV(deps))
-		export.GET("/playtime.json", handlers.ExportPlaytimeJSON(deps))
 	}
 
 	return r

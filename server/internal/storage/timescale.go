@@ -65,6 +65,23 @@ func (ts *TimescaleStorage) GetUserByEmail(ctx context.Context, email string) (*
 	return &u, nil
 }
 
+func (ts *TimescaleStorage) ListUserIDs(ctx context.Context) ([]int64, error) {
+	rows, err := ts.db.QueryContext(ctx, `SELECT id FROM users ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("storage.ListUserIDs: %w", err)
+	}
+	defer closeRows(rows)
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("storage.ListUserIDs: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // ─── Raw events ───────────────────────────────────────────────────────────────
 
 func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*models.RawEvent) error {
