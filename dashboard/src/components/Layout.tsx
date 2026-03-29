@@ -6,6 +6,7 @@ const navItems = [
   { to: '/sessions',  label: 'Sessions',  icon: '🎮' },
   { to: '/heatmap',   label: 'Heatmap',   icon: '🖱️' },
   { to: '/labels',    label: 'Labels',    icon: '🏷️' },
+  { to: '/timeline',  label: 'States',    icon: '📈' },
   { to: '/export',    label: 'Export',    icon: '📥' },
 ]
 

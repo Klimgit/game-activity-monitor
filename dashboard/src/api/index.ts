@@ -6,6 +6,7 @@ import type {
   Session,
   SessionFilters,
   ActivityInterval,
+  PredictedWindow,
 } from '../types/api'
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -88,6 +89,20 @@ export const intervalsApi = {
     source?: string
   }): Promise<ActivityInterval> => {
     const { data } = await client.post<ActivityInterval>('/intervals', payload)
+    return data
+  },
+}
+
+// ── Predictions (per-window, for timeline) ───────────────────────────────────
+
+export const predictionsApi = {
+  list: async (sessionId?: number): Promise<PredictedWindow[]> => {
+    const params = new URLSearchParams()
+    if (sessionId != null) params.set('session_id', String(sessionId))
+    const q = params.toString()
+    const { data } = await client.get<PredictedWindow[]>(
+      `/predictions${q ? `?${q}` : ''}`,
+    )
     return data
   },
 }

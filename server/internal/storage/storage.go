@@ -36,6 +36,10 @@ type Storage interface {
 	// PlaytimeByState sums interval lengths per state for the user in [from, to].
 	PlaytimeByState(ctx context.Context, userID int64, from, to time.Time, sessionID *int64) (map[string]int64, error)
 
+	// Predicted windows (ML inference output, per aggregation window).
+	ListPredictedWindows(ctx context.Context, userID int64, sessionID *int64, from, to time.Time) ([]*models.PredictedWindow, error)
+	UpsertPredictedWindowsBatch(ctx context.Context, userID int64, rows []*models.PredictedWindow) error
+
 	// --- Heatmap ---
 	GetHeatmapData(ctx context.Context, sessionID, userID int64) ([]models.ClickPoint, error)
 

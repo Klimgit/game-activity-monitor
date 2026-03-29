@@ -98,6 +98,19 @@ export interface ActivityInterval {
   created_at: string
 }
 
+/** One model prediction per aggregation window (dashboard timeline). */
+export interface PredictedWindow {
+  id: number
+  user_id: number
+  session_id: number
+  window_start: string
+  window_end: string
+  predicted_state: string
+  confidence?: number
+  model_version: string
+  created_at: string
+}
+
 export interface ClickPoint {
   x: number
   y: number

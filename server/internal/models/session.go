@@ -29,3 +29,16 @@ type ActivityInterval struct {
 	Source    string    `json:"source"     db:"source"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
+
+// PredictedWindow is one model prediction for an aggregation window [window_start, window_end).
+type PredictedWindow struct {
+	ID             int64     `json:"id"               db:"id"`
+	UserID         int64     `json:"user_id"          db:"user_id"`
+	SessionID      int64     `json:"session_id"       db:"session_id"`
+	WindowStart    time.Time `json:"window_start"     db:"window_start"`
+	WindowEnd      time.Time `json:"window_end"       db:"window_end"`
+	PredictedState string    `json:"predicted_state"  db:"predicted_state"`
+	Confidence     *float64  `json:"confidence,omitempty" db:"confidence"`
+	ModelVersion   string    `json:"model_version"    db:"model_version"`
+	CreatedAt      time.Time `json:"created_at"       db:"created_at"`
+}

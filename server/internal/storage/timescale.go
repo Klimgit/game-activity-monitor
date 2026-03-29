@@ -513,6 +513,97 @@ func (ts *TimescaleStorage) PlaytimeByState(ctx context.Context, userID int64, f
 	return out, rows.Err()
 }
 
+func (ts *TimescaleStorage) ListPredictedWindows(ctx context.Context, userID int64, sessionID *int64, from, to time.Time) ([]*models.PredictedWindow, error) {
+	q := `
+		SELECT id, user_id, session_id, window_start, window_end, predicted_state, confidence, model_version, created_at
+		FROM   predicted_windows
+		WHERE  user_id = $1
+		  AND window_end >= $2 AND window_start <= $3`
+	args := []interface{}{userID, from, to}
+	argN := 4
+	if sessionID != nil {
+		q += fmt.Sprintf(" AND session_id = $%d", argN)
+		args = append(args, *sessionID)
+	}
+	q += " ORDER BY window_start ASC"
+
+	rows, err := ts.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("storage.ListPredictedWindows: %w", err)
+	}
+	defer closeRows(rows)
+
+	var list []*models.PredictedWindow
+	for rows.Next() {
+		var p models.PredictedWindow
+		var conf sql.NullFloat64
+		if err := rows.Scan(
+			&p.ID, &p.UserID, &p.SessionID, &p.WindowStart, &p.WindowEnd,
+			&p.PredictedState, &conf, &p.ModelVersion, &p.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if conf.Valid {
+			v := conf.Float64
+			p.Confidence = &v
+		}
+		list = append(list, &p)
+	}
+	return list, rows.Err()
+}
+
+func (ts *TimescaleStorage) UpsertPredictedWindowsBatch(ctx context.Context, userID int64, rows []*models.PredictedWindow) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	tx, err := ts.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("storage.UpsertPredictedWindowsBatch begin: %w", err)
+	}
+	defer rollbackTx(tx)
+
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO predicted_windows (user_id, session_id, window_start, window_end, predicted_state, confidence, model_version)
+		SELECT $1, $2, $3, $4, $5, $6, $7
+		FROM activity_sessions s
+		WHERE s.id = $2 AND s.user_id = $1
+		ON CONFLICT (session_id, window_start) DO UPDATE SET
+			window_end = EXCLUDED.window_end,
+			predicted_state = EXCLUDED.predicted_state,
+			confidence = EXCLUDED.confidence,
+			model_version = EXCLUDED.model_version`)
+	if err != nil {
+		return fmt.Errorf("storage.UpsertPredictedWindowsBatch prepare: %w", err)
+	}
+	defer closeStmt(stmt)
+
+	for _, r := range rows {
+		r.UserID = userID
+		var conf interface{}
+		if r.Confidence != nil {
+			conf = *r.Confidence
+		}
+		mv := r.ModelVersion
+		if mv == "" {
+			mv = "unknown"
+		}
+		res, err := stmt.ExecContext(ctx,
+			userID, r.SessionID, r.WindowStart, r.WindowEnd, r.PredictedState, conf, mv,
+		)
+		if err != nil {
+			return fmt.Errorf("storage.UpsertPredictedWindowsBatch exec: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("storage.UpsertPredictedWindowsBatch rows: %w", err)
+		}
+		if n == 0 {
+			return fmt.Errorf("session %d not found or not owned by user", r.SessionID)
+		}
+	}
+	return tx.Commit()
+}
+
 // ─── Heatmap ──────────────────────────────────────────────────────────────────
 
 func (ts *TimescaleStorage) GetHeatmapData(ctx context.Context, sessionID, userID int64) ([]models.ClickPoint, error) {

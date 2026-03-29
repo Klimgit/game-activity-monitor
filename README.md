@@ -74,3 +74,4 @@ npm run dev     # runs on http://localhost:5173, proxied to server :8000
 - **raw_input_events** — TimescaleDB hypertable, 1-hour retention, stores every mouse/keyboard/system event
 - **activity_sessions** — one row per gaming session with aggregated durations and activity score
 - **activity_intervals** — ground-truth time ranges (`active_gameplay` / `afk` / `menu` / `loading`) via dev hotkeys or API. ML CSV is built **inside the service** with `go run ./cmd/collectdataset` (uses `DATABASE_URL`, not end-user HTTP).
+- **predicted_windows** — per aggregation window, model output (`predicted_state`, optional `confidence`, `model_version`). Ingest with `POST /api/v1/predictions/batch` (JWT = same user as session owner). Dashboard **States** page (`/timeline`) compares labels vs predictions over time.

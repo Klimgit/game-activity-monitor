@@ -67,6 +67,13 @@ func SetupRouter(store storage.Storage, jwtMgr *auth.JWTManager) *gin.Engine {
 		intervals.GET("", handlers.ListActivityIntervals(deps))
 	}
 
+	// Per-window model predictions (timeline UI + inference ingest)
+	predictions := protected.Group("/predictions")
+	{
+		predictions.GET("", handlers.ListPredictions(deps))
+		predictions.POST("/batch", handlers.UpsertPredictionsBatch(deps))
+	}
+
 	// Heatmap
 	protected.GET("/heatmap/:session_id", handlers.GetHeatmap(deps))
 
