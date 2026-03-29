@@ -113,11 +113,13 @@ func run(ctx context.Context, cancel context.CancelFunc, statusItem *systray.Men
 	hotkeyMgr := hotkeys.NewManagerFromBus(hookCh)
 	hotkeys.RegisterAll(hotkeyMgr, cfg.Hotkeys, map[string]func(){
 		"start_session": func() {
-			game := apiClient.LastKnownProcess()
-			if err := apiClient.StartSession(ctx, game); err != nil {
+			// game_name is intentionally empty — the active_process field in
+			// every window_metrics row already carries the detected process name.
+			// Users can annotate the session game name from the dashboard.
+			if err := apiClient.StartSession(ctx, ""); err != nil {
 				log.Printf("start session: %v", err)
 			} else {
-				log.Printf("session started (game=%q)", game)
+				log.Println("session started")
 				statusItem.SetTitle("Status: gaming")
 			}
 		},

@@ -84,8 +84,6 @@ openssl rand -hex 16
 
 # JWT secret
 openssl rand -hex 32
-
-# Grafana password — pick any strong password
 ```
 
 ---
@@ -159,9 +157,6 @@ Expected healthy state (~30 seconds after start):
 ```
 game-monitor-db       ... healthy
 game-monitor-server   ... started
-game-monitor-loki     ... started
-game-monitor-promtail ... started
-game-monitor-grafana  ... started
 ```
 
 ---
@@ -171,40 +166,28 @@ game-monitor-grafana  ... started
 ```bash
 # API health check
 curl https://yourdomain.com/api/v1/health
-
-# Grafana — open in browser
-# https://yourdomain.com/grafana
-# Login: admin / <GRAFANA_PASSWORD from .env>
 ```
 
----
+Open the React dashboard in a browser: `https://yourdomain.com`
 
-## Grafana setup (first time)
+### Container logs
 
-The following datasources are provisioned automatically on first start:
+There is no bundled log UI. View API and database logs with Docker:
 
-| Name | Type | What it shows |
-|---|---|---|
-| **Loki** | Loki | All container logs — filter by `{container="game-monitor-server"}` etc. |
-| **TimescaleDB** | PostgreSQL | Raw SQL access to game sessions, labels, click events |
-
-A starter dashboard **"Game Activity Monitor"** is also loaded automatically.
-Find it at: Dashboards → Game Activity Monitor.
-
-### Useful LogQL queries in Explore
-
-```logql
-# All logs from the Go API server
-{container="game-monitor-server"}
-
-# Errors only across all containers
-{job="docker"} |= "error" | line_format "{{.container}}: {{.output}}"
-
-# TimescaleDB logs
-{container="game-monitor-db"}
+```bash
+docker compose logs -f server
+docker compose logs -f timescaledb
 ```
 
-### Useful SQL queries in Explore (TimescaleDB datasource)
+### Ad-hoc SQL (optional)
+
+To run SQL against TimescaleDB, use an SSH tunnel or a one-off `psql` inside the DB container:
+
+```bash
+docker exec -it game-monitor-db psql -U postgres -d game_metrics
+```
+
+Example queries:
 
 ```sql
 -- Sessions in the last 7 days

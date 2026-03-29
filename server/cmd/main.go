@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -20,9 +21,13 @@ import (
 func main() {
 	cfg := config.Load()
 
-	if cfg.Auth.JWTSecret == "change-me-in-production" {
-		log.Println("WARNING: JWT_SECRET is set to the insecure default value. " +
-			"Set the JWT_SECRET environment variable before deploying to production.")
+	insecureDefaults := []string{"change-me-in-production", "CHANGE_ME", "secret", ""}
+	for _, bad := range insecureDefaults {
+		if cfg.Auth.JWTSecret == bad {
+			log.Println("WARNING: JWT_SECRET is set to an insecure default value. " +
+				"Set the JWT_SECRET environment variable before deploying to production.")
+			break
+		}
 	}
 
 	// ── Database ─────────────────────────────────────────────────────────────
@@ -52,8 +57,16 @@ func main() {
 	router := serverapi.SetupRouter(store, jwtMgr)
 
 	addr := ":" + cfg.Server.Port
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	log.Printf("listening on %s", addr)
-	if err := http.ListenAndServe(addr, router); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
 }
@@ -67,6 +80,7 @@ func runMigrations(dbURL string) error {
 	if err != nil {
 		return err
 	}
+	defer m.Close()
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return err
 	}

@@ -31,6 +31,7 @@ export type EventType =
   | 'key_press'
   | 'key_release'
   | 'system_metrics'
+  | 'window_metrics'
 
 export interface RawEvent {
   user_id: number
@@ -65,6 +66,24 @@ export interface MouseClickData {
 export interface KeyEventData {
   key: string
   hold_ms?: number
+}
+
+export interface WindowMetricsData {
+  window_start: string
+  window_end: string
+  duration_s: number
+  mouse_moves: number
+  mouse_clicks: number
+  speed_avg: number
+  speed_max: number
+  keystrokes: number
+  key_hold_avg_ms: number
+  active_process?: string
+  cpu_avg: number
+  cpu_max: number
+  mem_avg: number
+  gpu_util_avg: number
+  gpu_temp_avg: number
 }
 
 export interface ActivityLabel {

@@ -69,6 +69,10 @@ func EndSession(deps *Dependencies) gin.HandlerFunc {
 			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
 			return
 		}
+		if s.State == "ended" {
+			c.JSON(http.StatusConflict, gin.H{"error": "session is already ended"})
+			return
+		}
 
 		var req endSessionRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
