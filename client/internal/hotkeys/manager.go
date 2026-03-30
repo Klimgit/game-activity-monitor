@@ -11,14 +11,12 @@ import (
 	"game-activity-monitor/client/internal/config"
 )
 
-// Binding maps a parsed hotkey combo to its action name and callback.
 type Binding struct {
 	mods     modifiers
 	key      string
 	callback func()
 }
 
-// modifiers is a bitmask for Ctrl / Shift / Alt.
 type modifiers uint8
 
 const (
@@ -27,36 +25,22 @@ const (
 	modAlt   modifiers = 1 << 2
 )
 
-// Manager listens to the global hook and fires callbacks when registered
-// hotkey combinations are detected.
-//
-// It shares the same hook.Event stream as the input collectors by subscribing
-// to a HookBus, but can also operate standalone with its own hook.Start()
-// when the bus is not available (e.g., in tests).
 type Manager struct {
 	bindings []Binding
 	evChan   <-chan hook.Event
 	mu       sync.Mutex
-	mods     modifiers // currently held modifier keys
+	mods     modifiers
 }
 
-// NewManagerFromBus creates a Manager that reads from the provided channel.
-// Pass the channel returned by HookBus.Subscribe() so the global hook is
-// shared with the input collectors. If evChan is nil, Start will call
-// hook.Start() directly (standalone mode — use only when no HookBus is active).
 func NewManagerFromBus(evChan <-chan hook.Event) *Manager {
 	return &Manager{evChan: evChan}
 }
 
-// Register adds a hotkey → callback mapping.
-// combo format: "ctrl+shift+s" (case-insensitive, order-independent).
 func (m *Manager) Register(combo string, callback func()) {
 	mods, key := parseCombo(combo)
 	m.bindings = append(m.bindings, Binding{mods: mods, key: key, callback: callback})
 }
 
-// RegisterAll registers the standard set of hotkeys from config.
-// The callbacks map key → func, e.g. "start_session" → func(){...}
 func RegisterAll(m *Manager, cfg config.HotkeysConfig, actions map[string]func()) {
 	pairs := []struct {
 		combo  string
@@ -80,12 +64,9 @@ func RegisterAll(m *Manager, cfg config.HotkeysConfig, actions map[string]func()
 	}
 }
 
-// Start processes hook events until ctx is cancelled.
-// If no evChan was provided (standalone mode), it starts its own hook.
 func (m *Manager) Start(ctx context.Context) {
 	ch := m.evChan
 	if ch == nil {
-		// Standalone mode: start a dedicated hook (only safe when no HookBus is active).
 		rawCh := hook.Start()
 		defer hook.End()
 		ch = rawCh
@@ -114,7 +95,6 @@ func (m *Manager) handleEvent(ev hook.Event) {
 			m.mu.Unlock()
 			return
 		}
-		// Regular key press: check combos
 		key := normalizeKey(ev)
 		m.mu.Lock()
 		held := m.mods
@@ -137,9 +117,6 @@ func (m *Manager) handleEvent(ev hook.Event) {
 	}
 }
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
-// parseCombo parses "ctrl+shift+s" into a modifiers bitmask and the final key.
 func parseCombo(combo string) (modifiers, string) {
 	parts := strings.Split(strings.ToLower(combo), "+")
 	var mods modifiers
@@ -160,9 +137,6 @@ func parseCombo(combo string) (modifiers, string) {
 	return mods, key
 }
 
-// keyToModifier maps platform keycodes for modifier keys to bitmask values.
-// These values are for the most common platform (Windows); they may need
-// adjustment for macOS / Linux.
 func keyToModifier(keycode uint16) modifiers {
 	switch keycode {
 	case 162, 163: // VK_LCONTROL, VK_RCONTROL (Windows)
@@ -181,12 +155,10 @@ func keyToModifier(keycode uint16) modifiers {
 	return 0
 }
 
-// normalizeKey returns a lower-case single character or key name.
 func normalizeKey(ev hook.Event) string {
 	if ev.Keychar != 0 && ev.Keychar != 65535 {
 		return strings.ToLower(string(ev.Keychar))
 	}
-	// Fallback for non-printable keys (F-keys, arrows, etc.)
 	switch ev.Keycode {
 	case 13:
 		return "enter"

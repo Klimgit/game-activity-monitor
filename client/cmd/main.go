@@ -95,8 +95,6 @@ func onExit() {
 	log.Println("game-monitor: shutting down")
 }
 
-// run is the main application loop. It is launched from a goroutine so that
-// the systray event loop is not blocked.
 func run(ctx context.Context, cancel context.CancelFunc, statusItem *systray.MenuItem) {
 	defer cancel()
 
@@ -121,8 +119,6 @@ func run(ctx context.Context, cancel context.CancelFunc, statusItem *systray.Men
 	apiClient := api.NewClient(cfg.Server.URL, cfg.Offline.FlushInterval, store)
 
 	if cfg.Auth.Email != "" && cfg.Auth.Password != "" {
-		// Store credentials so the sync worker can re-authenticate automatically
-		// after a connection loss without requiring a restart.
 		apiClient.SetCredentials(cfg.Auth.Email, cfg.Auth.Password)
 
 		if err := apiClient.Login(ctx, cfg.Auth.Email, cfg.Auth.Password); err != nil {
@@ -132,41 +128,26 @@ func run(ctx context.Context, cancel context.CancelFunc, statusItem *systray.Men
 		}
 	}
 
-	// Start background sync worker.
 	go apiClient.StartSyncWorker(ctx)
 
-	// ── Collectors ────────────────────────────────────────────────────────────
-	// rawChan carries every event emitted by the collectors.
-	// aggChan carries only the events that survive the aggregator:
-	//   • mouse_click and system_metrics (pass-through)
-	//   • window_metrics (one per aggregation window, replaces individual
-	//     mouse_move / key_press / key_release events)
 	rawChan := make(chan *models.RawEvent, cfg.Offline.MaxQueueSize)
 	aggChan := make(chan *models.RawEvent, 512)
 
 	mgr := collectors.NewManager(cfg)
 
-	// Subscribe to the hook bus BEFORE Start() so the hotkey manager shares
-	// the same OS hook as the input collectors. This prevents a second
-	// concurrent hook.Start() call which causes a race condition in gohook.
 	hookCh := mgr.SubscribeHook()
 
 	mgr.Start(ctx, rawChan)
 
-	// Aggregator reduces high-frequency events into per-window summaries.
 	agg := aggregator.New(cfg.Collectors.Intervals.AggregationWindow, rawChan, aggChan)
 	go agg.Run(ctx)
 
-	// Forward aggregated events → stamp with user/session → save to SQLite.
 	go forwardEvents(ctx, apiClient, aggChan)
 
 	// ── Hotkeys ───────────────────────────────────────────────────────────────
 	hotkeyMgr := hotkeys.NewManagerFromBus(hookCh)
 	hotkeys.RegisterAll(hotkeyMgr, cfg.Hotkeys, map[string]func(){
 		"start_session": func() {
-			// game_name is intentionally empty — the active_process field in
-			// every window_metrics row already carries the detected process name.
-			// Users can annotate the session game name from the dashboard.
 			if err := apiClient.StartSession(ctx, ""); err != nil {
 				log.Printf("start session: %v", err)
 			} else {
@@ -198,8 +179,6 @@ func run(ctx context.Context, cancel context.CancelFunc, statusItem *systray.Men
 	<-ctx.Done()
 }
 
-// forwardEvents reads from the collector output channel and enqueues each event
-// into the local SQLite buffer via the API client.
 func forwardEvents(ctx context.Context, client *api.Client, ch <-chan *models.RawEvent) {
 	for {
 		select {

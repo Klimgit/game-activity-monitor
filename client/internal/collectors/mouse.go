@@ -20,9 +20,6 @@ func newMouseCollector(bus *HookBus) *mouseCollector {
 
 func (m *mouseCollector) Name() string { return "mouse" }
 
-// minMoveInterval caps mouse_move emission to 10 events/second (100 ms between
-// events). Raw OS mouse events fire hundreds of times per second during gameplay;
-// without throttling they dominate the SQLite buffer and network traffic.
 const minMoveInterval = 100 * time.Millisecond
 
 func (m *mouseCollector) Start(ctx context.Context, out chan<- *models.RawEvent) {
@@ -44,7 +41,6 @@ func (m *mouseCollector) Start(ctx context.Context, out chan<- *models.RawEvent)
 			case hook.MouseMove, hook.MouseDrag:
 				now := time.Now()
 
-				// Always track position/time for accurate speed calculation.
 				speed := 0.0
 				if !lastMoveTime.IsZero() {
 					dt := now.Sub(lastMoveTime).Seconds()
@@ -57,7 +53,6 @@ func (m *mouseCollector) Start(ctx context.Context, out chan<- *models.RawEvent)
 				lastX, lastY = ev.X, ev.Y
 				lastMoveTime = now
 
-				// Throttle: skip this event if we emitted too recently.
 				if now.Sub(lastEmitTime) < minMoveInterval {
 					continue
 				}

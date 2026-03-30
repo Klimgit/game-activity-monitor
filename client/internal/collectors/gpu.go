@@ -10,19 +10,6 @@ import (
 	"time"
 )
 
-// collectGPUMetrics probes the host for GPU utilization, temperature and
-// memory usage.  It tries two detection strategies in order:
-//
-//  1. nvidia-smi (NVIDIA drivers must be installed on Windows or Linux).
-//     Runs as a subprocess – designed to be called this way and typically
-//     returns within ~100 ms.
-//
-//  2. Linux sysfs (/sys/class/drm/card0/device/) for AMD/Intel iGPU.
-//     Only utilization percent is available via this path; temp and memory
-//     require vendor-specific hwmon paths which vary per kernel version.
-//
-// Returns zero values when no supported GPU is detected so callers never
-// need to handle an error branch.
 func collectGPUMetrics() (utilPct float64, tempC float64, memUsedMB int64) {
 	if u, t, m, ok := probeNvidiaSMI(); ok {
 		return u, t, m
@@ -35,13 +22,8 @@ func collectGPUMetrics() (utilPct float64, tempC float64, memUsedMB int64) {
 	return 0, 0, 0
 }
 
-// nvidiaSMITimeout is the maximum time we wait for the nvidia-smi subprocess.
-// A stuck or very slow driver probe must not block the system collector goroutine.
 const nvidiaSMITimeout = 3 * time.Second
 
-// probeNvidiaSMI calls nvidia-smi with CSV output and parses the first GPU's
-// utilization, temperature and used memory.  Returns ok=false if the binary
-// is not found, times out, or returns a non-zero exit code (no NVIDIA GPU).
 func probeNvidiaSMI() (utilPct float64, tempC float64, memUsedMB int64, ok bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), nvidiaSMITimeout)
 	defer cancel()
@@ -55,9 +37,6 @@ func probeNvidiaSMI() (utilPct float64, tempC float64, memUsedMB int64, ok bool)
 		return
 	}
 
-	// nvidia-smi separates fields with ", ".
-	// For a single GPU the output is one line: "82, 71, 6144\n"
-	// For multiple GPUs each GPU is on its own line; we use only the first.
 	line := strings.SplitN(strings.TrimSpace(string(out)), "\n", 2)[0]
 	fields := strings.Split(line, ", ")
 	if len(fields) < 3 {
@@ -74,9 +53,6 @@ func probeNvidiaSMI() (utilPct float64, tempC float64, memUsedMB int64, ok bool)
 	return u, t, int64(m), true
 }
 
-// probeLinuxDRM reads AMD/Intel utilization from the kernel's DRM sysfs
-// interface.  Checks card0 through card3 to handle systems with multiple
-// devices.  Returns ok=false when no readable entry is found.
 func probeLinuxDRM() (utilPct float64, ok bool) {
 	for _, card := range []string{"card0", "card1", "card2", "card3"} {
 		path := "/sys/class/drm/" + card + "/device/gpu_busy_percent"

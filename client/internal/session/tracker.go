@@ -5,12 +5,6 @@ import (
 	"time"
 )
 
-// Tracker measures total, active, and AFK duration for a gaming session.
-//
-// A second is counted as "active" when at least one input event was received
-// within the last [InactivityThreshold] seconds; otherwise it is "AFK".
-// A background goroutine ticks every second while the session is running,
-// so Stop() returns accurate values regardless of when it is called.
 type Tracker struct {
 	mu        sync.Mutex
 	startedAt time.Time
@@ -22,16 +16,12 @@ type Tracker struct {
 	done      chan struct{}
 }
 
-// InactivityThreshold is the period of silence after which a player is
-// considered AFK. Adjust if games have long passive sections.
 const InactivityThreshold = 30 * time.Second
 
-// NewTracker returns a Tracker ready to Start().
 func NewTracker() *Tracker {
 	return &Tracker{threshold: InactivityThreshold}
 }
 
-// Start begins the session clock. Calling Start on a running tracker is a no-op.
 func (t *Tracker) Start() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -40,7 +30,7 @@ func (t *Tracker) Start() {
 	}
 	now := time.Now()
 	t.startedAt = now
-	t.lastInput = now // treat session start as initial activity
+	t.lastInput = now
 	t.active = 0
 	t.afk = 0
 	t.running = true
@@ -48,16 +38,12 @@ func (t *Tracker) Start() {
 	go t.tick()
 }
 
-// RecordInput notes that input occurred now; resets the AFK countdown.
 func (t *Tracker) RecordInput() {
 	t.mu.Lock()
 	t.lastInput = time.Now()
 	t.mu.Unlock()
 }
 
-// Stop halts the session clock and returns the measured durations plus an
-// activity score (active / total, clamped to [0, 1]).
-// Returns zeros if the tracker was not running.
 func (t *Tracker) Stop() (totalSec, activeSec, afkSec int, score float64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -65,7 +51,7 @@ func (t *Tracker) Stop() (totalSec, activeSec, afkSec int, score float64) {
 		return 0, 0, 0, 0
 	}
 	t.running = false
-	close(t.done) // signal tick goroutine to exit
+	close(t.done)
 
 	total := time.Since(t.startedAt)
 	totalSec = int(total.Seconds())
@@ -80,7 +66,6 @@ func (t *Tracker) Stop() (totalSec, activeSec, afkSec int, score float64) {
 	return
 }
 
-// IsRunning reports whether a session is currently being tracked.
 func (t *Tracker) IsRunning() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
