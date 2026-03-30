@@ -11,8 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// parseExportFilters extracts the shared from/to/game query parameters used by
-// both export endpoints. Dates must be YYYY-MM-DD when present.
 func parseExportFilters(c *gin.Context) (from, to time.Time, game string, err error) {
 	if s := c.Query("from"); s != "" {
 		from, err = time.ParseInLocation("2006-01-02", s, time.UTC)
@@ -32,13 +30,10 @@ func parseExportFilters(c *gin.Context) (from, to time.Time, game string, err er
 	return from, to, game, nil
 }
 
-// writeCSVRow writes one CSV record; use with Flush + Writer.Error at the end.
 func writeCSVRow(w *csv.Writer, row []string) error {
 	return w.Write(row)
 }
 
-// ExportCSV streams session data as a UTF-8 CSV file.
-// Query params: from (YYYY-MM-DD), to (YYYY-MM-DD), game.
 func ExportCSV(deps *Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetInt64("user_id")
@@ -99,8 +94,6 @@ func ExportCSV(deps *Dependencies) gin.HandlerFunc {
 	}
 }
 
-// ExportJSON streams session data as a JSON file download.
-// Query params: from (YYYY-MM-DD), to (YYYY-MM-DD), game.
 func ExportJSON(deps *Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetInt64("user_id")
@@ -116,7 +109,7 @@ func ExportJSON(deps *Dependencies) gin.HandlerFunc {
 			return
 		}
 		if sessions == nil {
-			sessions = nil // keep JSON null rather than []
+			sessions = nil
 		}
 
 		payload := struct {

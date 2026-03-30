@@ -4,8 +4,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CORS adds permissive CORS headers and handles preflight OPTIONS requests.
-// In production, replace the wildcard origin with your dashboard domain.
 func CORS() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")

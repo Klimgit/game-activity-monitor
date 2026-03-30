@@ -1,5 +1,3 @@
-// Package dataset builds ML training exports from database rows (session_windows + activity_intervals).
-// It is intended for service-side batch jobs, not end-user HTTP downloads.
 package dataset
 
 import (
@@ -19,8 +17,6 @@ type windowKey struct {
 	t   time.Time
 }
 
-// WriteDatasetWindowsCSV appends labeled window feature rows for one user.
-// If includeHeader is true, the CSV header is written first (use true for the first user in a multi-user export).
 func WriteDatasetWindowsCSV(ctx context.Context, w io.Writer, st storage.Storage, userID int64, from, to time.Time, sessionID *int64, trainingOnly, includeHeader bool) error {
 	intervals, err := st.ListActivityIntervals(ctx, userID, sessionID, from, to)
 	if err != nil {

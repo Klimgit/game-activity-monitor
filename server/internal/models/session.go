@@ -2,7 +2,6 @@ package models
 
 import "time"
 
-// Session represents a single gaming session.
 type Session struct {
 	ID             int64      `json:"id"              db:"id"`
 	UserID         int64      `json:"user_id"         db:"user_id"`
@@ -18,12 +17,11 @@ type Session struct {
 	UpdatedAt      time.Time  `json:"updated_at"      db:"updated_at"`
 }
 
-// ActivityInterval is a ground-truth time range for ML (FSM: non-overlapping per session).
 type ActivityInterval struct {
 	ID        int64     `json:"id"         db:"id"`
 	UserID    int64     `json:"user_id"    db:"user_id"`
 	SessionID int64     `json:"session_id" db:"session_id"`
-	State     string    `json:"state"      db:"state"` // active_gameplay | afk | menu | loading
+	State     string    `json:"state"      db:"state"`
 	StartAt   time.Time `json:"start_at"   db:"start_at"`
 	EndAt     time.Time `json:"end_at"     db:"end_at"`
 	Source    string    `json:"source"     db:"source"`

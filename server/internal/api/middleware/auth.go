@@ -9,8 +9,6 @@ import (
 	"game-activity-monitor/server/internal/auth"
 )
 
-// AuthRequired validates the Bearer token in the Authorization header.
-// On success it injects "user_id" (int64) and "email" (string) into the context.
 func AuthRequired(jwtManager *auth.JWTManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")

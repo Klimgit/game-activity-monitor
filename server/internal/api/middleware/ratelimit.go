@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// slidingWindow tracks request timestamps per key using a simple sliding-window algorithm.
 type slidingWindow struct {
 	mu       sync.Mutex
 	requests map[string][]time.Time
@@ -51,7 +50,6 @@ func (sw *slidingWindow) allow(key string) bool {
 	return true
 }
 
-// cleanup periodically removes idle keys to prevent memory leaks.
 func (sw *slidingWindow) cleanup() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
@@ -75,8 +73,6 @@ func (sw *slidingWindow) cleanup() {
 	}
 }
 
-// RateLimit returns a Gin middleware that allows at most `limit` requests per
-// `window` duration per client IP.
 func RateLimit(limit int, window time.Duration) gin.HandlerFunc {
 	sw := newSlidingWindow(limit, window)
 	return func(c *gin.Context) {

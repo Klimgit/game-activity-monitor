@@ -14,7 +14,6 @@ type startSessionRequest struct {
 	GameName string `json:"game_name"`
 }
 
-// StartSession creates a new gaming session for the authenticated user.
 func StartSession(deps *Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetInt64("user_id")
@@ -49,7 +48,6 @@ type endSessionRequest struct {
 	ActivityScore  float64 `json:"activity_score"`
 }
 
-// EndSession closes an active session, recording its final durations.
 func EndSession(deps *Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetInt64("user_id")
@@ -97,8 +95,6 @@ func EndSession(deps *Dependencies) gin.HandlerFunc {
 	}
 }
 
-// GetSessions returns a filtered list of sessions for the authenticated user.
-// Query params: from (YYYY-MM-DD), to (YYYY-MM-DD), game (string).
 func GetSessions(deps *Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetInt64("user_id")
@@ -134,7 +130,6 @@ func GetSessions(deps *Dependencies) gin.HandlerFunc {
 	}
 }
 
-// GetSession returns a single session by ID.
 func GetSession(deps *Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetInt64("user_id")

@@ -7,9 +7,6 @@ import (
 	"game-activity-monitor/server/internal/models"
 )
 
-// Storage is the persistence interface used by all API handlers.
-// The single implementation is TimescaleStorage, but the interface
-// makes unit-testing handlers straightforward.
 type Storage interface {
 	// --- Users ---
 	CreateUser(ctx context.Context, email, passwordHash string) (*models.User, error)
