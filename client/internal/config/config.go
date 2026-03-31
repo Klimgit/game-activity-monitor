@@ -12,7 +12,6 @@ type Config struct {
 	Server     ServerConfig     `yaml:"server"`
 	Auth       AuthConfig       `yaml:"auth"`
 	Collectors CollectorsConfig `yaml:"collectors"`
-	Hotkeys    HotkeysConfig    `yaml:"hotkeys"`
 	Offline    OfflineConfig    `yaml:"offline"`
 }
 
@@ -35,20 +34,6 @@ type CollectorsConfig struct {
 		AggregationWindow time.Duration `yaml:"aggregation_window"`
 	} `yaml:"intervals"`
 	Enabled []string `yaml:"enabled"`
-}
-
-type HotkeysConfig struct {
-	StartSession string `yaml:"start_session"`
-	EndSession   string `yaml:"end_session"`
-	// Dev-only: interval boundaries for ML labels (pairs per state).
-	StartActiveGameplay string `yaml:"start_active"`
-	EndActiveGameplay   string `yaml:"end_active"`
-	StartAFK            string `yaml:"start_afk"`
-	EndAFK              string `yaml:"end_afk"`
-	StartMenu           string `yaml:"start_menu"`
-	EndMenu             string `yaml:"end_menu"`
-	StartLoading        string `yaml:"start_loading"`
-	EndLoading          string `yaml:"end_loading"`
 }
 
 type OfflineConfig struct {
@@ -85,17 +70,6 @@ func Default() *Config {
 	cfg.Collectors.Intervals.SystemPolling = 2 * time.Second
 	cfg.Collectors.Intervals.AggregationWindow = 10 * time.Second
 	cfg.Collectors.Enabled = []string{"mouse", "keyboard", "system", "gpu"}
-
-	cfg.Hotkeys.StartSession = "ctrl+shift+s"
-	cfg.Hotkeys.EndSession = "ctrl+shift+e"
-	cfg.Hotkeys.StartActiveGameplay = "ctrl+shift+1"
-	cfg.Hotkeys.EndActiveGameplay = "ctrl+shift+2"
-	cfg.Hotkeys.StartAFK = "ctrl+shift+3"
-	cfg.Hotkeys.EndAFK = "ctrl+shift+4"
-	cfg.Hotkeys.StartMenu = "ctrl+shift+5"
-	cfg.Hotkeys.EndMenu = "ctrl+shift+6"
-	cfg.Hotkeys.StartLoading = "ctrl+shift+7"
-	cfg.Hotkeys.EndLoading = "ctrl+shift+8"
 
 	cfg.Offline.MaxQueueSize = 50_000
 	cfg.Offline.FlushInterval = 5 * time.Second

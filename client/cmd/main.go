@@ -15,7 +15,6 @@ import (
 	"game-activity-monitor/client/internal/api"
 	"game-activity-monitor/client/internal/collectors"
 	"game-activity-monitor/client/internal/config"
-	"game-activity-monitor/client/internal/hotkeys"
 	"game-activity-monitor/client/internal/models"
 	"game-activity-monitor/client/internal/storage"
 )
@@ -65,6 +64,19 @@ func endIntervalMark(ctx context.Context, client *api.Client, expected string) {
 	}
 }
 
+// trayMenu holds systray items created in onReady; click handlers attach in run() after API client init.
+type trayMenu struct {
+	status *systray.MenuItem
+
+	startSession *systray.MenuItem
+	endSession   *systray.MenuItem
+
+	startActive, endActive   *systray.MenuItem
+	startAFK, endAFK         *systray.MenuItem
+	startMenu, endMenu       *systray.MenuItem
+	startLoading, endLoading *systray.MenuItem
+}
+
 func main() {
 	// systray.Run must be called from the main goroutine.
 	// All real work happens inside onReady (called by systray on a separate thread).
@@ -75,14 +87,40 @@ func onReady() {
 	systray.SetTitle("Game Monitor")
 	systray.SetTooltip("Game Activity Monitor — running")
 
-	mStatus := systray.AddMenuItem("Status: idle", "Current monitoring status")
-	mStatus.Disable()
+	tray := trayMenu{
+		status: systray.AddMenuItem("Status: idle", "Current monitoring status"),
+	}
+	tray.status.Disable()
+
+	systray.AddSeparator()
+
+	sessionRoot := systray.AddMenuItem("Session", "Start or end a gaming session")
+	tray.startSession = sessionRoot.AddSubMenuItem("Start session", "Begin session and start sending metrics")
+	tray.endSession = sessionRoot.AddSubMenuItem("End session", "End current session")
+
+	labelsRoot := systray.AddMenuItem("Activity labels", "Mark intervals for ML (one open at a time)")
+	ag := labelsRoot.AddSubMenuItem("Active gameplay", "Start/end active gameplay interval")
+	tray.startActive = ag.AddSubMenuItem("Start", "")
+	tray.endActive = ag.AddSubMenuItem("End", "")
+
+	afk := labelsRoot.AddSubMenuItem("AFK", "Start/end AFK interval")
+	tray.startAFK = afk.AddSubMenuItem("Start", "")
+	tray.endAFK = afk.AddSubMenuItem("End", "")
+
+	menu := labelsRoot.AddSubMenuItem("Menu", "Start/end in-game menu interval")
+	tray.startMenu = menu.AddSubMenuItem("Start", "")
+	tray.endMenu = menu.AddSubMenuItem("End", "")
+
+	load := labelsRoot.AddSubMenuItem("Loading", "Start/end loading interval")
+	tray.startLoading = load.AddSubMenuItem("Start", "")
+	tray.endLoading = load.AddSubMenuItem("End", "")
+
 	systray.AddSeparator()
 	mQuit := systray.AddMenuItem("Quit", "Stop monitoring and exit")
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 
-	go run(ctx, cancel, mStatus)
+	go run(ctx, cancel, &tray)
 
 	go func() {
 		<-mQuit.ClickedCh
@@ -95,7 +133,20 @@ func onExit() {
 	log.Println("game-monitor: shutting down")
 }
 
-func run(ctx context.Context, cancel context.CancelFunc, statusItem *systray.MenuItem) {
+func listenTrayClick(ctx context.Context, item *systray.MenuItem, fn func()) {
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-item.ClickedCh:
+				go fn()
+			}
+		}
+	}()
+}
+
+func run(ctx context.Context, cancel context.CancelFunc, tray *trayMenu) {
 	defer cancel()
 
 	// ── Config ────────────────────────────────────────────────────────────────
@@ -130,12 +181,36 @@ func run(ctx context.Context, cancel context.CancelFunc, statusItem *systray.Men
 
 	go apiClient.StartSyncWorker(ctx)
 
+	// ── Tray menu actions ─────────────────────────────────────────────────────
+	listenTrayClick(ctx, tray.startSession, func() {
+		if err := apiClient.StartSession(ctx, ""); err != nil {
+			log.Printf("start session: %v", err)
+		} else {
+			log.Println("session started")
+			tray.status.SetTitle("Status: gaming")
+		}
+	})
+	listenTrayClick(ctx, tray.endSession, func() {
+		if err := apiClient.EndSession(ctx); err != nil {
+			log.Printf("end session: %v", err)
+		} else {
+			log.Println("session ended")
+			tray.status.SetTitle("Status: idle")
+		}
+	})
+	listenTrayClick(ctx, tray.startActive, func() { startIntervalMark("active_gameplay") })
+	listenTrayClick(ctx, tray.endActive, func() { endIntervalMark(ctx, apiClient, "active_gameplay") })
+	listenTrayClick(ctx, tray.startAFK, func() { startIntervalMark("afk") })
+	listenTrayClick(ctx, tray.endAFK, func() { endIntervalMark(ctx, apiClient, "afk") })
+	listenTrayClick(ctx, tray.startMenu, func() { startIntervalMark("menu") })
+	listenTrayClick(ctx, tray.endMenu, func() { endIntervalMark(ctx, apiClient, "menu") })
+	listenTrayClick(ctx, tray.startLoading, func() { startIntervalMark("loading") })
+	listenTrayClick(ctx, tray.endLoading, func() { endIntervalMark(ctx, apiClient, "loading") })
+
 	rawChan := make(chan *models.RawEvent, cfg.Offline.MaxQueueSize)
 	aggChan := make(chan *models.RawEvent, 512)
 
 	mgr := collectors.NewManager(cfg)
-
-	hookCh := mgr.SubscribeHook()
 
 	mgr.Start(ctx, rawChan)
 
@@ -144,38 +219,7 @@ func run(ctx context.Context, cancel context.CancelFunc, statusItem *systray.Men
 
 	go forwardEvents(ctx, apiClient, aggChan)
 
-	// ── Hotkeys ───────────────────────────────────────────────────────────────
-	hotkeyMgr := hotkeys.NewManagerFromBus(hookCh)
-	hotkeys.RegisterAll(hotkeyMgr, cfg.Hotkeys, map[string]func(){
-		"start_session": func() {
-			if err := apiClient.StartSession(ctx, ""); err != nil {
-				log.Printf("start session: %v", err)
-			} else {
-				log.Println("session started")
-				statusItem.SetTitle("Status: gaming")
-			}
-		},
-		"end_session": func() {
-			if err := apiClient.EndSession(ctx); err != nil {
-				log.Printf("end session: %v", err)
-			} else {
-				log.Println("session ended")
-				statusItem.SetTitle("Status: idle")
-			}
-		},
-		"start_active":  func() { startIntervalMark("active_gameplay") },
-		"end_active":    func() { endIntervalMark(ctx, apiClient, "active_gameplay") },
-		"start_afk":     func() { startIntervalMark("afk") },
-		"end_afk":       func() { endIntervalMark(ctx, apiClient, "afk") },
-		"start_menu":    func() { startIntervalMark("menu") },
-		"end_menu":      func() { endIntervalMark(ctx, apiClient, "menu") },
-		"start_loading": func() { startIntervalMark("loading") },
-		"end_loading":   func() { endIntervalMark(ctx, apiClient, "loading") },
-	})
-
-	go hotkeyMgr.Start(ctx)
-
-	log.Println("game-monitor running — hotkeys: session ctrl+shift+s/e; intervals ctrl+shift+1..8 (start/end per state)")
+	log.Println("game-monitor running — use the tray menu: Session and Activity labels")
 	<-ctx.Done()
 }
 

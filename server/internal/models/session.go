@@ -24,6 +24,5 @@ type ActivityInterval struct {
 	State     string    `json:"state"      db:"state"`
 	StartAt   time.Time `json:"start_at"   db:"start_at"`
 	EndAt     time.Time `json:"end_at"     db:"end_at"`
-	Source    string    `json:"source"     db:"source"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
