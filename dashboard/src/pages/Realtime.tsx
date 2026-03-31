@@ -212,24 +212,13 @@ export default function Realtime() {
         <ChartCard title="Avg Mouse Speed" data={history} dataKey="speedAvg" color="#22d3ee" unit="px/s" />
       </div>
 
-      {/* ── Hotkeys reference ─────────────────────────────────────────────── */}
+      {/* ── Client tray menu ──────────────────────────────────────────────── */}
       <div className="card">
-        <h3 className="text-sm font-medium text-slate-300 mb-3">Client Hotkeys</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs text-slate-400">
-          {[
-            ['Ctrl+Shift+S', 'Start session'],
-            ['Ctrl+Shift+E', 'End session'],
-            ['Ctrl+Shift+A', 'Mark: active gameplay'],
-            ['Ctrl+Shift+F', 'Mark: AFK'],
-            ['Ctrl+Shift+M', 'Mark: in menu'],
-            ['Ctrl+Shift+L', 'Mark: loading'],
-          ].map(([key, desc]) => (
-            <div key={key} className="flex items-center gap-2">
-              <kbd className="px-1.5 py-0.5 bg-slate-700 rounded text-slate-300 font-mono">{key}</kbd>
-              <span>{desc}</span>
-            </div>
-          ))}
-        </div>
+        <h3 className="text-sm font-medium text-slate-300 mb-3">Desktop client (system tray)</h3>
+        <p className="text-xs text-slate-400">
+          Use the tray icon menu: <strong className="text-slate-300">Session</strong> for start/end session,{' '}
+          <strong className="text-slate-300">Activity labels</strong> for interval marks (one open at a time).
+        </p>
       </div>
     </div>
   )

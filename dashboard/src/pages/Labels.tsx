@@ -110,7 +110,7 @@ export default function Labels() {
           <div className="p-8 text-center text-slate-500">
             <p className="text-lg mb-1">No intervals yet</p>
             <p className="text-sm">
-              Use the desktop client: start/end hotkeys Ctrl+Shift+1…8 during a session, or POST /api/v1/intervals.
+              Use the desktop client: tray menu → Activity labels during a session, or POST /api/v1/intervals.
             </p>
           </div>
         )}
@@ -122,7 +122,6 @@ export default function Labels() {
                 <th className="px-4 py-3">End</th>
                 <th className="px-4 py-3">Δ</th>
                 <th className="px-4 py-3">State</th>
-                <th className="px-4 py-3">Source</th>
                 <th className="px-4 py-3">Session</th>
               </tr>
             </thead>
@@ -135,7 +134,6 @@ export default function Labels() {
                   <td className="px-4 py-3">
                     <StateBadge state={iv.state} />
                   </td>
-                  <td className="px-4 py-3 text-slate-400 text-xs">{iv.source}</td>
                   <td className="px-4 py-3 text-slate-400 text-xs">#{iv.session_id}</td>
                 </tr>
               ))}
@@ -145,20 +143,16 @@ export default function Labels() {
       </div>
 
       <div className="card">
-        <h3 className="text-sm font-medium text-slate-300 mb-3">Dev hotkeys (desktop client)</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-400">
-          {[
-            ['Ctrl+Shift+1 / 2', 'active gameplay start / end'],
-            ['Ctrl+Shift+3 / 4', 'AFK start / end'],
-            ['Ctrl+Shift+5 / 6', 'menu start / end'],
-            ['Ctrl+Shift+7 / 8', 'loading start / end'],
-          ].map(([key, desc]) => (
-            <div key={key} className="flex items-center gap-2">
-              <kbd className="px-1.5 py-0.5 bg-slate-700 rounded text-slate-300 font-mono">{key}</kbd>
-              <span>{desc}</span>
-            </div>
-          ))}
-        </div>
+        <h3 className="text-sm font-medium text-slate-300 mb-3">Desktop client (system tray)</h3>
+        <ul className="text-xs text-slate-400 space-y-2 list-disc list-inside">
+          <li>
+            <strong className="text-slate-300">Session</strong> — Start session / End session
+          </li>
+          <li>
+            <strong className="text-slate-300">Activity labels</strong> — nested items for each state (Active
+            gameplay, AFK, Menu, Loading); use Start / End per state. Only one open interval at a time.
+          </li>
+        </ul>
       </div>
     </div>
   )

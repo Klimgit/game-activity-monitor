@@ -94,7 +94,6 @@ export interface ActivityInterval {
   state: string // active_gameplay | afk | menu | loading
   start_at: string
   end_at: string
-  source: string
   created_at: string
 }
 

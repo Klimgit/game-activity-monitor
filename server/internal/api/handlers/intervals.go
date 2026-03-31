@@ -22,7 +22,6 @@ type createIntervalRequest struct {
 	State     string    `json:"state"        binding:"required"`
 	StartAt   time.Time `json:"start_at"     binding:"required"`
 	EndAt     time.Time `json:"end_at"       binding:"required"`
-	Source    string    `json:"source"`
 }
 
 // CreateActivityInterval stores one closed interval for ML ground truth.
@@ -38,10 +37,6 @@ func CreateActivityInterval(deps *Dependencies) gin.HandlerFunc {
 			return
 		}
 		uid := c.GetInt64("user_id")
-		src := req.Source
-		if src == "" {
-			src = "client"
-		}
 
 		iv := &models.ActivityInterval{
 			UserID:    uid,
@@ -49,7 +44,6 @@ func CreateActivityInterval(deps *Dependencies) gin.HandlerFunc {
 			State:     req.State,
 			StartAt:   req.StartAt.UTC(),
 			EndAt:     req.EndAt.UTC(),
-			Source:    src,
 		}
 
 		created, err := deps.Storage.CreateActivityInterval(c.Request.Context(), iv)
