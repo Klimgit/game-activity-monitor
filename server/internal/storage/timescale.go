@@ -109,9 +109,9 @@ func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*model
 		INSERT INTO session_windows
 		    (time, user_id, session_id, window_start, window_end, duration_s,
 		     mouse_moves, mouse_clicks, speed_avg, speed_max,
-		     keystrokes, key_hold_avg_ms, active_process,
+		     keystrokes, key_hold_avg_ms, key_press_interval_avg_ms, key_w, key_a, key_s, key_d, active_process,
 		     cpu_avg, cpu_max, mem_avg, gpu_util_avg, gpu_temp_avg)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`)
 	if err != nil {
 		return fmt.Errorf("storage.SaveEventsBatch prepare window: %w", err)
 	}
@@ -151,7 +151,8 @@ func (ts *TimescaleStorage) SaveEventsBatch(ctx context.Context, events []*model
 					e.Timestamp, e.UserID, sessionID,
 					w.WindowStart, w.WindowEnd, w.DurationS,
 					w.MouseMoves, w.MouseClicks, w.SpeedAvg, w.SpeedMax,
-					w.Keystrokes, w.KeyHoldAvgMs, w.ActiveProcess,
+					w.Keystrokes, w.KeyHoldAvgMs,
+					w.KeyPressIntervalAvgMs, w.KeyW, w.KeyA, w.KeyS, w.KeyD, w.ActiveProcess,
 					w.CPUAvg, w.CPUMax, w.MemAvg, w.GPUUtilAvg, w.GPUTempAvg,
 				); err != nil {
 					return fmt.Errorf("storage.SaveEventsBatch exec window: %w", err)
@@ -425,7 +426,7 @@ func (ts *TimescaleStorage) SessionWindowsForUser(ctx context.Context, userID in
 	q := `
 		SELECT time, user_id, session_id, window_start, window_end, duration_s,
 		       mouse_moves, mouse_clicks, speed_avg, speed_max,
-		       keystrokes, key_hold_avg_ms, active_process,
+		       keystrokes, key_hold_avg_ms, key_press_interval_avg_ms, key_w, key_a, key_s, key_d, active_process,
 		       cpu_avg, cpu_max, mem_avg, gpu_util_avg, gpu_temp_avg
 		FROM   session_windows
 		WHERE  user_id = $1
@@ -449,7 +450,7 @@ func (ts *TimescaleStorage) SessionWindowsForUser(ctx context.Context, userID in
 		if err := rows.Scan(
 			&r.Time, &r.UserID, &r.SessionID, &r.WindowStart, &r.WindowEnd, &r.DurationS,
 			&r.MouseMoves, &r.MouseClicks, &r.SpeedAvg, &r.SpeedMax,
-			&r.Keystrokes, &r.KeyHoldAvgMs, &r.ActiveProcess,
+			&r.Keystrokes, &r.KeyHoldAvgMs, &r.KeyPressIntervalAvgMs, &r.KeyW, &r.KeyA, &r.KeyS, &r.KeyD, &r.ActiveProcess,
 			&r.CPUAvg, &r.CPUMax, &r.MemAvg, &r.GPUUtilAvg, &r.GPUTempAvg,
 		); err != nil {
 			return nil, err

@@ -3,6 +3,7 @@ package aggregator
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"game-activity-monitor/client/internal/models"
@@ -72,20 +73,27 @@ func (a *Aggregator) Run(ctx context.Context) {
 // ─── window accumulator ───────────────────────────────────────────────────────
 
 type windowAccumulator struct {
-	mouseMoves  int
-	mouseClicks int
-	speedSum    float64
-	speedMax    float64
-	keystrokes  int
-	holdMsSum   float64
-	holdCount   int
-	lastProcess string
-	cpuSum      float64
-	cpuMax      float64
-	memSum      float64
-	gpuUtilSum  float64
-	gpuTempSum  float64
-	hwCount     int
+	mouseMoves   int
+	mouseClicks  int
+	speedSum     float64
+	speedMax     float64
+	keystrokes   int
+	holdMsSum    float64
+	holdCount    int
+	lastKeyPress time.Time
+	keyGapSumMs  float64
+	keyGapCount  int
+	keyW         int
+	keyA         int
+	keyS         int
+	keyD         int
+	lastProcess  string
+	cpuSum       float64
+	cpuMax       float64
+	memSum       float64
+	gpuUtilSum   float64
+	gpuTempSum   float64
+	hwCount      int
 }
 
 func (w *windowAccumulator) reset() {
@@ -121,7 +129,18 @@ func (w *windowAccumulator) ingest(ev *models.RawEvent) {
 		}
 
 	case models.EventKeyPress:
+		var d models.KeyEventData
+		if err := json.Unmarshal(ev.Data, &d); err != nil {
+			return
+		}
 		w.keystrokes++
+		countWASD(d.Key, &w.keyW, &w.keyA, &w.keyS, &w.keyD)
+		if !w.lastKeyPress.IsZero() {
+			gap := ev.Timestamp.Sub(w.lastKeyPress)
+			w.keyGapSumMs += float64(gap.Milliseconds())
+			w.keyGapCount++
+		}
+		w.lastKeyPress = ev.Timestamp
 
 	case models.EventKeyRelease:
 		var d models.KeyEventData
@@ -135,6 +154,23 @@ func (w *windowAccumulator) ingest(ev *models.RawEvent) {
 	}
 }
 
+func countWASD(key string, w, a, s, d *int) {
+	k := strings.TrimSpace(strings.ToLower(key))
+	if len(k) != 1 {
+		return
+	}
+	switch k[0] {
+	case 'w':
+		*w++
+	case 'a':
+		*a++
+	case 's':
+		*s++
+	case 'd':
+		*d++
+	}
+}
+
 func (w *windowAccumulator) toEvent(start, end time.Time) *models.RawEvent {
 	var speedAvg float64
 	if w.mouseMoves > 0 {
@@ -144,6 +180,11 @@ func (w *windowAccumulator) toEvent(start, end time.Time) *models.RawEvent {
 	var holdAvg float64
 	if w.holdCount > 0 {
 		holdAvg = w.holdMsSum / float64(w.holdCount)
+	}
+
+	var keyPressIntervalAvg float64
+	if w.keyGapCount > 0 {
+		keyPressIntervalAvg = w.keyGapSumMs / float64(w.keyGapCount)
 	}
 
 	var cpuAvg, memAvg, gpuUtilAvg, gpuTempAvg float64
@@ -159,21 +200,26 @@ func (w *windowAccumulator) toEvent(start, end time.Time) *models.RawEvent {
 		Timestamp: end,
 		EventType: models.EventWindowMetrics,
 		Data: models.MustMarshal(models.WindowMetricsData{
-			WindowStart:   start,
-			WindowEnd:     end,
-			DurationS:     end.Sub(start).Seconds(),
-			MouseMoves:    w.mouseMoves,
-			MouseClicks:   w.mouseClicks,
-			SpeedAvg:      speedAvg,
-			SpeedMax:      w.speedMax,
-			Keystrokes:    w.keystrokes,
-			KeyHoldAvgMs:  holdAvg,
-			ActiveProcess: w.lastProcess,
-			CPUAvg:        cpuAvg,
-			CPUMax:        w.cpuMax,
-			MemAvg:        memAvg,
-			GPUUtilAvg:    gpuUtilAvg,
-			GPUTempAvg:    gpuTempAvg,
+			WindowStart:           start,
+			WindowEnd:             end,
+			DurationS:             end.Sub(start).Seconds(),
+			MouseMoves:            w.mouseMoves,
+			MouseClicks:           w.mouseClicks,
+			SpeedAvg:              speedAvg,
+			SpeedMax:              w.speedMax,
+			Keystrokes:            w.keystrokes,
+			KeyHoldAvgMs:          holdAvg,
+			KeyPressIntervalAvgMs: keyPressIntervalAvg,
+			KeyW:                  w.keyW,
+			KeyA:                  w.keyA,
+			KeyS:                  w.keyS,
+			KeyD:                  w.keyD,
+			ActiveProcess:         w.lastProcess,
+			CPUAvg:                cpuAvg,
+			CPUMax:                w.cpuMax,
+			MemAvg:                memAvg,
+			GPUUtilAvg:            gpuUtilAvg,
+			GPUTempAvg:            gpuTempAvg,
 		}),
 	}
 }
