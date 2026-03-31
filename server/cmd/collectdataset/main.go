@@ -69,16 +69,6 @@ func main() {
 	st := storage.NewTimescaleStorage(db)
 	ctx := context.Background()
 
-	var users []int64
-	if *userID != 0 {
-		users = []int64{*userID}
-	} else {
-		users, err = st.ListUserIDs(ctx)
-		if err != nil {
-			log.Fatalf("collectdataset: list users: %v", err)
-		}
-	}
-
 	out, err := os.Create(*outPath)
 	if err != nil {
 		log.Fatalf("collectdataset: create output: %v", err)
@@ -89,13 +79,20 @@ func main() {
 		}
 	}()
 
-	for i, uid := range users {
-		if err := dataset.WriteDatasetWindowsCSV(ctx, out, st, uid, from, to, sessionID, *trainingOnly, i == 0); err != nil {
-			log.Fatalf("collectdataset: user %d: %v", uid, err)
+	if *userID != 0 {
+		if err := dataset.WriteDatasetWindowsCSV(ctx, out, st, *userID, from, to, sessionID, *trainingOnly, true); err != nil {
+			log.Fatalf("collectdataset: user %d: %v", *userID, err)
 		}
+		if _, err := fmt.Fprintf(os.Stderr, "collectdataset: wrote user %d to %s\n", *userID, *outPath); err != nil {
+			log.Printf("collectdataset: write status: %v", err)
+		}
+		return
 	}
 
-	if _, err := fmt.Fprintf(os.Stderr, "collectdataset: wrote %d user(s) to %s\n", len(users), *outPath); err != nil {
+	if err := dataset.ExportLabeledWindowsForRange(ctx, out, st, from, to, sessionID, *trainingOnly); err != nil {
+		log.Fatalf("collectdataset: %v", err)
+	}
+	if _, err := fmt.Fprintf(os.Stderr, "collectdataset: wrote all users to %s\n", *outPath); err != nil {
 		log.Printf("collectdataset: write status: %v", err)
 	}
 }

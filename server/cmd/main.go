@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	serverapi "game-activity-monitor/server/internal/api"
 	"game-activity-monitor/server/internal/auth"
 	"game-activity-monitor/server/internal/config"
+	"game-activity-monitor/server/internal/dataset"
 	"game-activity-monitor/server/internal/storage"
 	mig "game-activity-monitor/server/migrations"
 )
@@ -35,7 +37,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("open db: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if cerr := db.Close(); cerr != nil {
+			log.Printf("close db: %v", cerr)
+		}
+	}()
 
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(10)
@@ -55,6 +61,18 @@ func main() {
 	store := storage.NewTimescaleStorage(db)
 	jwtMgr := auth.NewJWTManager(cfg.Auth.JWTSecret, cfg.Auth.TokenDuration)
 	router := serverapi.SetupRouter(store, jwtMgr)
+
+	if cfg.DatasetAutomation.Enabled {
+		if cfg.DatasetAutomation.OutputDir == "" {
+			log.Fatal("DATASET_AUTOMATION_ENABLED=true requires DATASET_AUTOMATION_OUTPUT_DIR")
+		}
+		dataset.StartAutomation(context.Background(), store, dataset.AutomationConfig{
+			Enabled:    cfg.DatasetAutomation.Enabled,
+			Interval:   cfg.DatasetAutomation.Interval,
+			OutputDir:  cfg.DatasetAutomation.OutputDir,
+			RunOnStart: cfg.DatasetAutomation.RunOnStart,
+		})
+	}
 
 	addr := ":" + cfg.Server.Port
 	srv := &http.Server{
@@ -80,7 +98,15 @@ func runMigrations(dbURL string) error {
 	if err != nil {
 		return err
 	}
-	defer m.Close()
+	defer func() {
+		srcErr, dbErr := m.Close()
+		if srcErr != nil {
+			log.Printf("migrate: close source: %v", srcErr)
+		}
+		if dbErr != nil {
+			log.Printf("migrate: close database: %v", dbErr)
+		}
+	}()
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return err
 	}

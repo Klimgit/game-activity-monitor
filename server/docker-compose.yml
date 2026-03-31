@@ -40,6 +40,11 @@ services:
       PORT: "8000"
       DATABASE_URL: postgres://postgres:${DB_PASSWORD}@timescaledb:5432/game_metrics?sslmode=disable
       JWT_SECRET: ${JWT_SECRET}
+      # Optional — uncomment in .env: DATASET_AUTOMATION_ENABLED, OUTPUT_DIR, INTERVAL, RUN_ON_START
+      DATASET_AUTOMATION_ENABLED: ${DATASET_AUTOMATION_ENABLED:-false}
+      DATASET_AUTOMATION_OUTPUT_DIR: ${DATASET_AUTOMATION_OUTPUT_DIR:-}
+      DATASET_AUTOMATION_INTERVAL: ${DATASET_AUTOMATION_INTERVAL:-24h}
+      DATASET_AUTOMATION_RUN_ON_START: ${DATASET_AUTOMATION_RUN_ON_START:-false}
     # 8000:8000 — доступ с этой машины и по LAN (клиент на другом ПК в сети).
     # На VPS за Nginx смените на "127.0.0.1:8000:8000", чтобы API не светился наружу.
     ports:
@@ -47,6 +52,9 @@ services:
     depends_on:
       timescaledb:
         condition: service_healthy
+    # Uncomment when DATASET_AUTOMATION_OUTPUT_DIR=/datasets (match both env and volume path):
+    # volumes:
+    #   - ./datasets:/datasets
     restart: unless-stopped
     logging: *default-logging
 

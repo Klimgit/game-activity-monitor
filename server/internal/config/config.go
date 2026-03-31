@@ -6,9 +6,10 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Auth     AuthConfig
+	Server            ServerConfig
+	Database          DatabaseConfig
+	Auth              AuthConfig
+	DatasetAutomation DatasetAutomationConfig
 }
 
 type ServerConfig struct {
@@ -24,7 +25,18 @@ type AuthConfig struct {
 	TokenDuration time.Duration
 }
 
+type DatasetAutomationConfig struct {
+	Enabled    bool
+	Interval   time.Duration
+	OutputDir  string
+	RunOnStart bool
+}
+
 func Load() *Config {
+	iv, _ := time.ParseDuration(getEnv("DATASET_AUTOMATION_INTERVAL", "24h"))
+	if iv < time.Minute {
+		iv = 24 * time.Hour
+	}
 	return &Config{
 		Server: ServerConfig{
 			Port: getEnv("PORT", "8000"),
@@ -35,6 +47,12 @@ func Load() *Config {
 		Auth: AuthConfig{
 			JWTSecret:     mustEnv("JWT_SECRET", "change-me-in-production"),
 			TokenDuration: 24 * time.Hour,
+		},
+		DatasetAutomation: DatasetAutomationConfig{
+			Enabled:    getEnv("DATASET_AUTOMATION_ENABLED", "") == "true",
+			Interval:   iv,
+			OutputDir:  getEnv("DATASET_AUTOMATION_OUTPUT_DIR", ""),
+			RunOnStart: getEnv("DATASET_AUTOMATION_RUN_ON_START", "") == "true",
 		},
 	}
 }
