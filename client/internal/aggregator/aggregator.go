@@ -3,6 +3,7 @@ package aggregator
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"strings"
 	"time"
 
@@ -53,6 +54,9 @@ func (a *Aggregator) Run(ctx context.Context) {
 						if sys.ActiveProcess != "" {
 							acc.lastProcess = sys.ActiveProcess
 						}
+						if sys.ForegroundWindowTitle != "" {
+							acc.lastForegroundTitle = sys.ForegroundWindowTitle
+						}
 						acc.addHardwareSample(sys.CPUPercent, sys.MemPercent, sys.GPUPercent, sys.GPUTempC)
 					}
 				}
@@ -73,27 +77,30 @@ func (a *Aggregator) Run(ctx context.Context) {
 // ─── window accumulator ───────────────────────────────────────────────────────
 
 type windowAccumulator struct {
-	mouseMoves   int
-	mouseClicks  int
-	speedSum     float64
-	speedMax     float64
-	keystrokes   int
-	holdMsSum    float64
-	holdCount    int
-	lastKeyPress time.Time
-	keyGapSumMs  float64
-	keyGapCount  int
-	keyW         int
-	keyA         int
-	keyS         int
-	keyD         int
-	lastProcess  string
-	cpuSum       float64
-	cpuMax       float64
-	memSum       float64
-	gpuUtilSum   float64
-	gpuTempSum   float64
-	hwCount      int
+	mouseMoves          int
+	mouseClicks         int
+	speedSum            float64
+	speedMax            float64
+	keystrokes          int
+	holdMsSum           float64
+	holdCount           int
+	lastKeyPress        time.Time
+	keyGapSumMs         float64
+	keyGapCount         int
+	keyW                int
+	keyA                int
+	keyS                int
+	keyD                int
+	lastProcess         string
+	lastForegroundTitle string
+	accelSum            float64
+	accelMaxAbs         float64
+	cpuSum              float64
+	cpuMax              float64
+	memSum              float64
+	gpuUtilSum          float64
+	gpuTempSum          float64
+	hwCount             int
 }
 
 func (w *windowAccumulator) reset() {
@@ -126,6 +133,11 @@ func (w *windowAccumulator) ingest(ev *models.RawEvent) {
 		w.speedSum += d.Speed
 		if d.Speed > w.speedMax {
 			w.speedMax = d.Speed
+		}
+		w.accelSum += d.Acceleration
+		a := math.Abs(d.Acceleration)
+		if a > w.accelMaxAbs {
+			w.accelMaxAbs = a
 		}
 
 	case models.EventKeyPress:
@@ -187,6 +199,11 @@ func (w *windowAccumulator) toEvent(start, end time.Time) *models.RawEvent {
 		keyPressIntervalAvg = w.keyGapSumMs / float64(w.keyGapCount)
 	}
 
+	var cursorAccelAvg float64
+	if w.mouseMoves > 0 {
+		cursorAccelAvg = w.accelSum / float64(w.mouseMoves)
+	}
+
 	var cpuAvg, memAvg, gpuUtilAvg, gpuTempAvg float64
 	if w.hwCount > 0 {
 		n := float64(w.hwCount)
@@ -215,6 +232,9 @@ func (w *windowAccumulator) toEvent(start, end time.Time) *models.RawEvent {
 			KeyS:                  w.keyS,
 			KeyD:                  w.keyD,
 			ActiveProcess:         w.lastProcess,
+			ForegroundWindowTitle: w.lastForegroundTitle,
+			CursorAccelAvg:        cursorAccelAvg,
+			CursorAccelMax:        w.accelMaxAbs,
 			CPUAvg:                cpuAvg,
 			CPUMax:                w.cpuMax,
 			MemAvg:                memAvg,
