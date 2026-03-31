@@ -43,7 +43,7 @@ services:
     # 8000:8000 — доступ с этой машины и по LAN (клиент на другом ПК в сети).
     # На VPS за Nginx смените на "127.0.0.1:8000:8000", чтобы API не светился наружу.
     ports:
-      - "8000:8000"
+      - "5433:5432"
     depends_on:
       timescaledb:
         condition: service_healthy
