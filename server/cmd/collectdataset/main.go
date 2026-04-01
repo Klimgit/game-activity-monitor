@@ -66,7 +66,7 @@ func main() {
 		log.Fatalf("collectdataset: ping: %v", err)
 	}
 
-	st := storage.NewTimescaleStorage(db)
+	st := storage.NewTimescaleStorage(db, nil)
 	ctx := context.Background()
 
 	var users []int64

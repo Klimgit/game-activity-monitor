@@ -6,6 +6,7 @@ import type {
   Session,
   SessionFilters,
   ActivityInterval,
+  WindowMetricsSummary,
 } from '../types/api'
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -27,6 +28,13 @@ export const metricsApi = {
   /** Returns raw events from the last `seconds` seconds (max 300). */
   getRecent: async (seconds = 30): Promise<RawEvent[]> => {
     const { data } = await client.get<RawEvent[]>(`/metrics/recent?seconds=${seconds}`)
+    return data
+  },
+
+  /** Aggregates session_windows (including ML playtime) for [from, to] UTC days. */
+  getWindowsSummary: async (from: string, to: string): Promise<WindowMetricsSummary> => {
+    const params = new URLSearchParams({ from, to })
+    const { data } = await client.get(`/metrics/windows-summary?${params}`)
     return data
   },
 }
