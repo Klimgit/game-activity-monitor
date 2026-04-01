@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 import joblib
+import numpy as np
 import pandas as pd
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
@@ -15,9 +16,20 @@ MODEL_PATH = os.environ.get("MODEL_PATH", "/models/classifier.joblib")
 
 TEXT_COLS = ("active_process", "foreground_window_title", "game_name")
 
+
+def _feature_names_from_prep(prep) -> list[str]:
+    """ColumnTransformer.feature_names_in_ is an ndarray; avoid `arr or []` (ambiguous truth value)."""
+    raw = getattr(prep, "feature_names_in_", None)
+    if raw is None:
+        return []
+    if isinstance(raw, np.ndarray):
+        return [str(x) for x in raw.tolist()]
+    return list(raw)
+
+
 pipe = joblib.load(MODEL_PATH)
 prep = pipe.named_steps["prep"]
-cols: list[str] = list(getattr(prep, "feature_names_in_", []) or [])
+cols: list[str] = _feature_names_from_prep(prep)
 if not cols:
     meta_path = Path(MODEL_PATH).with_name("training_metadata.json")
     if meta_path.is_file():
