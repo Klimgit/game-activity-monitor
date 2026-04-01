@@ -7,3 +7,4 @@ data/*.csv
 data/eda/
 models/*.joblib
 models/*.json
+colab/training_out/

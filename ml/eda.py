@@ -5,6 +5,8 @@ Stage 1 — exploratory analysis on the exported window CSV.
 Reads the file produced by prepare_dataset.py, prints summary stats and class balance,
 checks GPU columns (if all zeros, do not use them for modelling), and optionally
 writes a text report.
+
+Model training: use colab/train_classifier.ipynb in Colab or Kaggle (no local train script).
 """
 
 from __future__ import annotations
