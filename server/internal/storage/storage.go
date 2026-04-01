@@ -22,6 +22,8 @@ type Storage interface {
 	// --- Sessions ---
 	CreateSession(ctx context.Context, s *models.Session) (*models.Session, error)
 	UpdateSession(ctx context.Context, s *models.Session) error
+	// UpdateSessionGameName sets game_name for a session owned by userID; returns the updated row.
+	UpdateSessionGameName(ctx context.Context, sessionID, userID int64, gameName string) (*models.Session, error)
 	GetSessions(ctx context.Context, userID int64, from, to time.Time, game string) ([]*models.Session, error)
 	GetSessionByID(ctx context.Context, id, userID int64) (*models.Session, error)
 

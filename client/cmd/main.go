@@ -5,10 +5,12 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/gen2brain/dlgs"
 	"github.com/getlantern/systray"
 
 	"game-activity-monitor/client/internal/aggregator"
@@ -24,6 +26,9 @@ var (
 	intervalMu    sync.Mutex
 	intervalStart *time.Time
 	intervalState string
+
+	// Last game name entered in the Start session dialog (prefill next time).
+	lastSessionGameName string
 )
 
 func startIntervalMark(state string) {
@@ -183,10 +188,25 @@ func run(ctx context.Context, cancel context.CancelFunc, tray *trayMenu) {
 
 	// ── Tray menu actions ─────────────────────────────────────────────────────
 	listenTrayClick(ctx, tray.startSession, func() {
-		if err := apiClient.StartSession(ctx, ""); err != nil {
+		defaultName := lastSessionGameName
+		if defaultName == "" {
+			defaultName = cfg.Session.DefaultGameName
+		}
+		name, ok, err := dlgs.Entry("Game Activity Monitor", "Game name (compared to window title in exported CSV):", defaultName)
+		if err != nil {
+			log.Printf("game name dialog: %v — using session.default_game_name from config", err)
+			name = cfg.Session.DefaultGameName
+			ok = true
+		}
+		if !ok {
+			return
+		}
+		name = strings.TrimSpace(name)
+		lastSessionGameName = name
+		if err := apiClient.StartSession(ctx, name); err != nil {
 			log.Printf("start session: %v", err)
 		} else {
-			log.Println("session started")
+			log.Printf("session started (game_name=%q)", name)
 			tray.status.SetTitle("Status: gaming")
 		}
 	})
