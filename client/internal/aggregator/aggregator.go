@@ -60,7 +60,7 @@ func (a *Aggregator) Run(ctx context.Context) {
 						if sys.ForegroundWindowTitle != "" {
 							acc.lastForegroundTitle = sys.ForegroundWindowTitle
 						}
-						acc.addHardwareSample(sys.CPUPercent, sys.MemPercent, sys.GPUPercent, sys.GPUTempC)
+						acc.addHardwareSample(sys.CPUPercent, sys.MemPercent, sys.GPUPercent, sys.GPUTempC, sys.GPUMemUsedMB)
 					}
 				}
 			default:
@@ -103,6 +103,7 @@ type windowAccumulator struct {
 	memSum              float64
 	gpuUtilSum          float64
 	gpuTempSum          float64
+	gpuMemSumMB         float64
 	hwCount             int
 }
 
@@ -114,7 +115,7 @@ func (w *windowAccumulator) hasData() bool {
 	return w.mouseMoves > 0 || w.keystrokes > 0 || w.mouseClicks > 0 || w.hwCount > 0
 }
 
-func (w *windowAccumulator) addHardwareSample(cpu, mem, gpuUtil, gpuTemp float64) {
+func (w *windowAccumulator) addHardwareSample(cpu, mem, gpuUtil, gpuTemp float64, gpuMemMB int64) {
 	w.hwCount++
 	w.cpuSum += cpu
 	if cpu > w.cpuMax {
@@ -123,6 +124,7 @@ func (w *windowAccumulator) addHardwareSample(cpu, mem, gpuUtil, gpuTemp float64
 	w.memSum += mem
 	w.gpuUtilSum += gpuUtil
 	w.gpuTempSum += gpuTemp
+	w.gpuMemSumMB += float64(gpuMemMB)
 }
 
 func (w *windowAccumulator) ingest(ev *models.RawEvent) {
@@ -228,13 +230,14 @@ func (w *windowAccumulator) toEvent(start, end time.Time) *models.RawEvent {
 		cursorAccelAvg = w.accelSum / float64(w.mouseMoves)
 	}
 
-	var cpuAvg, memAvg, gpuUtilAvg, gpuTempAvg float64
+	var cpuAvg, memAvg, gpuUtilAvg, gpuTempAvg, gpuMemAvgMB float64
 	if w.hwCount > 0 {
 		n := float64(w.hwCount)
 		cpuAvg = w.cpuSum / n
 		memAvg = w.memSum / n
 		gpuUtilAvg = w.gpuUtilSum / n
 		gpuTempAvg = w.gpuTempSum / n
+		gpuMemAvgMB = w.gpuMemSumMB / n
 	}
 
 	return &models.RawEvent{
@@ -264,6 +267,7 @@ func (w *windowAccumulator) toEvent(start, end time.Time) *models.RawEvent {
 			MemAvg:                memAvg,
 			GPUUtilAvg:            gpuUtilAvg,
 			GPUTempAvg:            gpuTempAvg,
+			GPUMemAvgMB:           gpuMemAvgMB,
 		}),
 	}
 }

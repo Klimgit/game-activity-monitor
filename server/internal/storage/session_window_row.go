@@ -29,6 +29,7 @@ type SessionWindowRow struct {
 	MemAvg                float64
 	GPUUtilAvg            float64
 	GPUTempAvg            float64
+	GPUMemAvgMB           float64
 	CursorAccelAvg        float64
 	CursorAccelMax        float64
 	ForegroundWindowTitle string
