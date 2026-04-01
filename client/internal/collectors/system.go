@@ -10,6 +10,7 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/process"
 
+	"game-activity-monitor/client/internal/focus"
 	"game-activity-monitor/client/internal/models"
 )
 
@@ -65,6 +66,8 @@ func (s *systemCollector) collectMetrics(ctx context.Context) (models.SystemMetr
 	if s.collectGPU {
 		data.GPUPercent, data.GPUTempC, data.GPUMemUsedMB = collectGPUMetrics()
 	}
+
+	data.ForegroundWindowTitle = focus.ForegroundWindowTitle()
 
 	return data, nil
 }

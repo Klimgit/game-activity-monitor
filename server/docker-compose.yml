@@ -20,10 +20,9 @@ services:
       POSTGRES_DB: game_metrics
     volumes:
       - db_data:/var/lib/postgresql/data
-    # Port is NOT exposed to the host — only reachable inside the Docker network.
-    # Use an SSH tunnel or pgAdmin container if you need direct DB access.
-    expose:
-      - "5432"
+    # Host 5433 -> container 5432 (5433 avoids clash with a local Postgres on 5432).
+    ports:
+      - "5433:5432"
     restart: unless-stopped
     logging: *default-logging
     healthcheck:
