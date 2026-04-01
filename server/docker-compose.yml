@@ -31,6 +31,25 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── ML inference (optional): `docker compose --profile ml up -d` and copy classifier.joblib to ml/models/
+  inference:
+    profiles: ["ml"]
+    build:
+      context: ../ml/inference
+      dockerfile: Dockerfile
+    container_name: game-monitor-inference
+    environment:
+      MODEL_PATH: /models/classifier.joblib
+    volumes:
+      - ../ml/models:/models:ro
+    ports:
+      - "8090:8090"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *default-logging
+
   # ── Go API server ──────────────────────────────────────────────────────────
   server:
     build: .
@@ -39,6 +58,7 @@ services:
       PORT: "8000"
       DATABASE_URL: postgres://postgres:${DB_PASSWORD}@timescaledb:5432/game_metrics?sslmode=disable
       JWT_SECRET: ${JWT_SECRET}
+      ML_INFERENCE_URL: ${ML_INFERENCE_URL:-}
     # 8000:8000 — доступ с этой машины и по LAN (клиент на другом ПК в сети).
     # На VPS за Nginx смените на "127.0.0.1:8000:8000", чтобы API не светился наружу.
     ports:

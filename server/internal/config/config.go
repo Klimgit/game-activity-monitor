@@ -9,6 +9,12 @@ type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
 	Auth     AuthConfig
+	ML       MLConfig
+}
+
+type MLConfig struct {
+	// InferenceURL is the base URL of the Python classifier service (e.g. http://localhost:8090). Empty disables ML writes.
+	InferenceURL string
 }
 
 type ServerConfig struct {
@@ -35,6 +41,9 @@ func Load() *Config {
 		Auth: AuthConfig{
 			JWTSecret:     mustEnv("JWT_SECRET", "change-me-in-production"),
 			TokenDuration: 24 * time.Hour,
+		},
+		ML: MLConfig{
+			InferenceURL: getEnv("ML_INFERENCE_URL", ""),
 		},
 	}
 }

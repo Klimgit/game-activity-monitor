@@ -127,6 +127,23 @@ func GetSessions(deps *Dependencies) gin.HandlerFunc {
 			sessions = []*models.Session{}
 		}
 
+		if len(sessions) > 0 {
+			ids := make([]int64, len(sessions))
+			for i, s := range sessions {
+				ids[i] = s.ID
+			}
+			ml, err := deps.Storage.MLPlaytimeBySessionIDs(c.Request.Context(), uid, ids)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load ml playtime"})
+				return
+			}
+			for _, s := range sessions {
+				if m := ml[s.ID]; len(m) > 0 {
+					s.MLPlaytimeSeconds = m
+				}
+			}
+		}
+
 		c.JSON(http.StatusOK, sessions)
 	}
 }
@@ -149,6 +166,15 @@ func GetSession(deps *Dependencies) gin.HandlerFunc {
 		if s == nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
 			return
+		}
+
+		ml, err := deps.Storage.MLPlaytimeBySessionIDs(c.Request.Context(), uid, []int64{sessionID})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load ml playtime"})
+			return
+		}
+		if m := ml[sessionID]; len(m) > 0 {
+			s.MLPlaytimeSeconds = m
 		}
 
 		c.JSON(http.StatusOK, s)
