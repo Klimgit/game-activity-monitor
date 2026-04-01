@@ -2,6 +2,7 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 pandas>=2.0.0
 numpy>=1.26.0
-scikit-learn>=1.4.0
+# Must match the sklearn version used when training/saving classifier.joblib (see training_metadata.json or Colab env).
+scikit-learn==1.6.1
 joblib>=1.3.0
 pydantic>=2.0.0
