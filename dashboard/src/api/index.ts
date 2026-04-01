@@ -11,6 +11,19 @@ import type {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
+export interface HealthResponse {
+  status: string
+  /** True when the Go API was started with ML_INFERENCE_URL (ingest writes ml_predicted_state). */
+  ml_inference_configured?: boolean
+}
+
+export const healthApi = {
+  get: async (): Promise<HealthResponse> => {
+    const { data } = await client.get<HealthResponse>('/health')
+    return data
+  },
+}
+
 export const authApi = {
   login: async (email: string, password: string): Promise<AuthResponse> => {
     const { data } = await client.post<AuthResponse>('/auth/login', { email, password })

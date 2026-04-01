@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
-import { sessionsApi } from '../api'
+import { healthApi, sessionsApi } from '../api'
 import type { Session, SessionFilters } from '../types/api'
 
 function fmtDuration(sec: number) {
@@ -132,6 +132,7 @@ export default function Sessions() {
   const [mlModalSession, setMlModalSession] = useState<Session | null>(null)
   const [mlModalLoading, setMlModalLoading] = useState(false)
   const [mlModalError, setMlModalError] = useState<string | null>(null)
+  const [mlServerHasInference, setMlServerHasInference] = useState<boolean | null>(null)
 
   const queryClient = useQueryClient()
 
@@ -156,10 +157,17 @@ export default function Sessions() {
   async function openMlModal(sessionId: number) {
     setMlModalSession(null)
     setMlModalError(null)
+    setMlServerHasInference(null)
     setMlModalLoading(true)
     try {
-      const s = await sessionsApi.get(sessionId)
+      const [s, health] = await Promise.all([
+        sessionsApi.get(sessionId),
+        healthApi.get().catch(() => null),
+      ])
       setMlModalSession(s)
+      if (health && typeof health.ml_inference_configured === 'boolean') {
+        setMlServerHasInference(health.ml_inference_configured)
+      }
       void queryClient.invalidateQueries({ queryKey: ['sessions'] })
     } catch {
       setMlModalError('Could not load session. Try again.')
@@ -172,6 +180,7 @@ export default function Sessions() {
     setMlModalSession(null)
     setMlModalError(null)
     setMlModalLoading(false)
+    setMlServerHasInference(null)
   }
 
   return (
@@ -241,7 +250,9 @@ export default function Sessions() {
                 </h2>
                 <p className="text-xs text-slate-500 mt-1">
                   Sums of window durations by predicted label (classifier on{' '}
-                  <code className="text-slate-400">session_windows</code>). Refresh after new metrics.
+                  <code className="text-slate-400">session_windows</code>). Values appear only for windows
+                  ingested while the API could reach the inference service — existing rows are not
+                  backfilled.
                 </p>
               </div>
               <button
@@ -287,10 +298,28 @@ export default function Sessions() {
                   </span>
                 </p>
                 {sumMlSeconds(mlModalSession.ml_playtime_seconds) <= 0 && (
-                  <p className="text-amber-400/90 text-xs">
-                    No ML rows for this session yet — the inference service must be running when metrics
-                    arrive, or the session has no window_metrics stored.
-                  </p>
+                  <div className="space-y-2 text-xs">
+                    <p className="text-amber-400/90">
+                      No ML breakdown for this session: either there are no{' '}
+                      <code className="text-slate-400">window_metrics</code> rows, or they were saved
+                      without predictions.
+                    </p>
+                    {mlServerHasInference === false && (
+                      <p className="text-red-400/95 rounded-md bg-red-950/40 border border-red-900/60 px-2 py-2">
+                        The <strong className="text-red-300">Go API</strong> was started without{' '}
+                        <code className="text-red-200/90">ML_INFERENCE_URL</code>. Uvicorn alone does not
+                        fill the database — export{' '}
+                        <code className="text-red-200/90">ML_INFERENCE_URL=http://127.0.0.1:8090</code>{' '}
+                        (or your URL), restart the API process, then let the client send new metrics.
+                      </p>
+                    )}
+                    {mlServerHasInference === true && (
+                      <p className="text-slate-400">
+                        If inference was enabled after this session was recorded, start a new session or
+                        wait for new aggregated windows — old data is not recomputed automatically.
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             )}

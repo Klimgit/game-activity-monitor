@@ -15,6 +15,9 @@ func HealthCheck(deps *Dependencies) gin.HandlerFunc {
 			})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		c.JSON(http.StatusOK, gin.H{
+			"status":                  "ok",
+			"ml_inference_configured": deps.MLInferenceConfigured,
+		})
 	}
 }

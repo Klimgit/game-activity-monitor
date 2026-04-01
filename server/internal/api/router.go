@@ -12,7 +12,7 @@ import (
 	"game-activity-monitor/server/internal/storage"
 )
 
-func SetupRouter(store storage.Storage, jwtMgr *auth.JWTManager) *gin.Engine {
+func SetupRouter(store storage.Storage, jwtMgr *auth.JWTManager, mlInferenceConfigured bool) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
@@ -24,8 +24,9 @@ func SetupRouter(store storage.Storage, jwtMgr *auth.JWTManager) *gin.Engine {
 	r.Use(middleware.RateLimit(300, time.Minute))
 
 	deps := &handlers.Dependencies{
-		Storage:    store,
-		JWTManager: jwtMgr,
+		Storage:               store,
+		JWTManager:            jwtMgr,
+		MLInferenceConfigured: mlInferenceConfigured,
 	}
 
 	v1 := r.Group("/api/v1")
