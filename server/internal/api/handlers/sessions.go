@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -151,5 +152,42 @@ func GetSession(deps *Dependencies) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, s)
+	}
+}
+
+type patchSessionRequest struct {
+	GameName string `json:"game_name"`
+}
+
+// PatchSession updates editable session fields (currently only game_name).
+func PatchSession(deps *Dependencies) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid := c.GetInt64("user_id")
+
+		sessionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+			return
+		}
+
+		var req patchSessionRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		name := strings.TrimSpace(req.GameName)
+
+		updated, err := deps.Storage.UpdateSessionGameName(c.Request.Context(), sessionID, uid, name)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update session"})
+			return
+		}
+		if updated == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+			return
+		}
+
+		c.JSON(http.StatusOK, updated)
 	}
 }
