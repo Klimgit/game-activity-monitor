@@ -132,14 +132,12 @@ func (s *LocalStorage) FetchBatch(ctx context.Context, limit int) (events []*mod
 	return events, ids, err
 }
 
-// PendingCount returns how many rows are waiting to be sent.
 func (s *LocalStorage) PendingCount(ctx context.Context) (int64, error) {
 	var n int64
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pending_events`).Scan(&n)
 	return n, err
 }
 
-// DeleteBySessionID removes buffered events for a session (after they were sent, or to discard leftovers).
 func (s *LocalStorage) DeleteBySessionID(ctx context.Context, sessionID int64) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM pending_events WHERE session_id = ?`, sessionID)
 	if err != nil {

@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-// HTTPPredictor calls a remote inference service (e.g. ml/inference FastAPI).
 type HTTPPredictor struct {
 	baseURL string
 	client  *http.Client

@@ -66,7 +66,6 @@ func endIntervalMark(ctx context.Context, client *api.Client, expected string) {
 	}
 }
 
-// trayMenu holds systray items created in onReady; click handlers attach in run() after API client init.
 type trayMenu struct {
 	status *systray.MenuItem
 
@@ -81,8 +80,6 @@ type trayMenu struct {
 }
 
 func main() {
-	// systray.Run must be called from the main goroutine.
-	// All real work happens inside onReady (called by systray on a separate thread).
 	systray.Run(onReady, onExit)
 }
 

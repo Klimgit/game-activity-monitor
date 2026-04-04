@@ -6,9 +6,6 @@ import (
 	"unicode"
 )
 
-// TitleMatchScore is in [0,1]: how similar the foreground window title is to the session game name.
-// Empty gameName yields -1 (caller should not use as a feature without imputation).
-// Uses substring match → 1, else normalized Levenshtein similarity on Unicode runes.
 func TitleMatchScore(gameName, windowTitle string) float64 {
 	g := normTitle(gameName)
 	t := normTitle(windowTitle)
@@ -33,7 +30,6 @@ func TitleMatchScore(gameName, windowTitle string) float64 {
 	return 1 - float64(d)/float64(maxLen)
 }
 
-// TitleMatchScoreCSV formats TitleMatchScore for CSV (empty when game_name is unset).
 func TitleMatchScoreCSV(gameName, windowTitle string) string {
 	if strings.TrimSpace(gameName) == "" {
 		return ""

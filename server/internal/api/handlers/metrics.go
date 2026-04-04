@@ -30,15 +30,8 @@ func validatedSessionIDs(c *gin.Context, deps *Dependencies, uid int64, events [
 	return valid
 }
 
-// maxBatchSize caps the number of events accepted in a single request.
-// This prevents a misbehaving or malicious client from allocating unbounded
-// memory on the server. The client sync worker sends at most 1 000 events per
-// flush, so 5 000 gives comfortable headroom without risking DoS.
 const maxBatchSize = 5_000
 
-// ReceiveMetricsBatch accepts a JSON array of raw events from the desktop client.
-// The user_id on each event is overwritten with the authenticated user's ID
-// to prevent clients from spoofing other users' data.
 func ReceiveMetricsBatch(deps *Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetInt64("user_id")

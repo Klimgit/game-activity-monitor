@@ -72,8 +72,6 @@ func (s *systemCollector) collectMetrics(ctx context.Context) (models.SystemMetr
 	return data, nil
 }
 
-// topCPUProcess returns the name of the non-system process currently using
-// the most CPU. Returns "idle" when no significant user processes are running.
 func topCPUProcess(ctx context.Context) (string, error) {
 	procs, err := process.ProcessesWithContext(ctx)
 	if err != nil {

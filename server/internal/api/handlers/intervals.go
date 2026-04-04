@@ -24,7 +24,6 @@ type createIntervalRequest struct {
 	EndAt     time.Time `json:"end_at"       binding:"required"`
 }
 
-// CreateActivityInterval stores one closed interval for ML ground truth.
 func CreateActivityInterval(deps *Dependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req createIntervalRequest

@@ -17,7 +17,6 @@ var (
 
 const titleMaxChars = 512
 
-// ForegroundWindowTitle returns the foreground window caption (empty on failure).
 func ForegroundWindowTitle() string {
 	hwnd, _, _ := procGetForegroundWindow.Call()
 	if hwnd == 0 {

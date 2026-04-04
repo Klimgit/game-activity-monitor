@@ -25,7 +25,6 @@ func newSlidingWindow(limit int, window time.Duration) *slidingWindow {
 	return sw
 }
 
-// allow returns true if the key has not exceeded the rate limit.
 func (sw *slidingWindow) allow(key string) bool {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
